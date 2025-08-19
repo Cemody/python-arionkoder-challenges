@@ -12,3 +12,7 @@ __pycache__/
 *.egg-info/ 
 message_queue/
 challenge-1/demo_test.py
+challenge-2/demo.py
+challenge-2/demo_test.py
+challenge-2/README.md
+challenge-2/demo_enhanced_api.py
