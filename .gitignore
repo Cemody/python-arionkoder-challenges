@@ -10,3 +10,5 @@ __pycache__/
 *.env
 *.DS_Store
 *.egg-info/ 
+message_queue/
+challenge-1/demo_test.py

@@ -1,8 +1,13 @@
 from typing import Any, Dict, Iterable, Iterator, Optional, Set, AsyncIterator
+import asyncio
+import datetime
+import sqlite3
+import json
+import sys
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Query, Header
-import sys
-import json
 
 def _iter_records(payload: Any) -> Iterator[Dict[str, Any]]:
     """
@@ -192,3 +197,151 @@ async def iter_json_records(request: Request) -> AsyncIterator[Dict[str, Any]]:
             # Last resort - just print the body
             print(body.decode('utf-8', errors='replace'))
             sys.stdout.flush()
+
+
+# ---------- Database and Message Queue Functions ----------
+
+# Initialize database
+def init_database():
+    """Initialize SQLite database for storing webhook results"""
+    db_path = Path("webhook_results.db")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS webhook_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            group_by_field TEXT,
+            sum_field TEXT,
+            aggregation_data TEXT,
+            processed_records INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    conn.commit()
+    conn.close()
+
+async def save_to_database(result: Dict[str, Any], group_by: Optional[str], sum_field: Optional[str]):
+    """Save webhook results to SQLite database"""
+    try:
+        # Run database operations in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _save_to_database_sync, result, group_by, sum_field)
+        print(f"✓ Saved result to database: {result['processed_records']} records processed")
+    except Exception as e:
+        print(f"✗ Database save failed: {e}")
+
+def _save_to_database_sync(result: Dict[str, Any], group_by: Optional[str], sum_field: Optional[str]):
+    """Synchronous database save operation"""
+    init_database()  # Ensure database exists
+    
+    db_path = Path("webhook_results.db")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO webhook_results (timestamp, group_by_field, sum_field, aggregation_data, processed_records)
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        result["timestamp"],
+        group_by,
+        sum_field,
+        json.dumps(result["aggregation"]),
+        result["processed_records"]
+    ))
+    
+    conn.commit()
+    conn.close()
+
+async def publish_to_message_queue(result: Dict[str, Any], group_by: Optional[str], sum_field: Optional[str]):
+    """Publish webhook results to message queue (simulated with file-based queue)"""
+    try:
+        # Simulate message queue with file-based approach
+        message = {
+            "id": f"msg_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}",
+            "timestamp": result["timestamp"],
+            "payload": {
+                "group_by_field": group_by,
+                "sum_field": sum_field,
+                "aggregation": result["aggregation"],
+                "processed_records": result["processed_records"]
+            },
+            "status": "published"
+        }
+        
+        # Run file operations in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _publish_to_queue_sync, message)
+        print(f"✓ Published to message queue: {message['id']}")
+    except Exception as e:
+        print(f"✗ Message queue publish failed: {e}")
+
+def _publish_to_queue_sync(message: Dict[str, Any]):
+    """Synchronous message queue publish operation"""
+    queue_dir = Path("message_queue")
+    queue_dir.mkdir(exist_ok=True)
+    
+    message_file = queue_dir / f"{message['id']}.json"
+    with open(message_file, 'w') as f:
+        json.dump(message, f, indent=2)
+
+# ---------- Utility functions for accessing stored data ----------
+
+def get_recent_results(limit: int = 10) -> list:
+    """Get recent webhook results from database"""
+    try:
+        db_path = Path("webhook_results.db")
+        if not db_path.exists():
+            return []
+            
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT timestamp, group_by_field, sum_field, aggregation_data, processed_records, created_at
+            FROM webhook_results 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        """, (limit,))
+        
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                "timestamp": row[0],
+                "group_by_field": row[1],
+                "sum_field": row[2],
+                "aggregation": json.loads(row[3]) if row[3] else None,
+                "processed_records": row[4],
+                "created_at": row[5]
+            })
+        
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"Error retrieving results: {e}")
+        return []
+
+def get_queued_messages(limit: int = 10) -> list:
+    """Get recent messages from the message queue"""
+    try:
+        queue_dir = Path("message_queue")
+        if not queue_dir.exists():
+            return []
+        
+        message_files = sorted(queue_dir.glob("*.json"), key=os.path.getmtime, reverse=True)[:limit]
+        messages = []
+        
+        for file_path in message_files:
+            try:
+                with open(file_path, 'r') as f:
+                    message = json.load(f)
+                    messages.append(message)
+            except Exception as e:
+                print(f"Error reading message file {file_path}: {e}")
+        
+        return messages
+    except Exception as e:
+        print(f"Error retrieving queued messages: {e}")
+        return []

@@ -1,11 +1,15 @@
 
 import json
 import sys
+import datetime
+import asyncio
 from typing import Any, Optional, Set, Dict, Iterable
 
 from utils import (
     _iter_records, _project, _aggregate,
-    iter_ndjson_records, iter_json_records, _aggregate_in_place
+    iter_ndjson_records, iter_json_records, _aggregate_in_place,
+    save_to_database, publish_to_message_queue,
+    get_recent_results, get_queued_messages
 )
 
 from fastapi import FastAPI, Request, Query, Header
@@ -53,10 +57,21 @@ async def webhook(
                 prec = projector(rec)
                 _aggregate_in_place(aggregation, prec, group_by, sum_field)
 
-        return {
+        result = {
             "ok": True,
             "aggregation": aggregation or None,  # None if no group_by
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "processed_records": len(aggregation) if aggregation else 0
         }
+
+        # Save results to database and publish to message queue
+        await asyncio.gather(
+            save_to_database(result, group_by, sum_field),
+            publish_to_message_queue(result, group_by, sum_field),
+            return_exceptions=True
+        )
+
+        return result
 
     except Exception:
         # Non-JSON? Stream raw text lines to stdout without buffering.
@@ -74,3 +89,42 @@ async def webhook(
             print(line_buf)
             sys.stdout.flush()
         return {"ok": True, "note": "received non-JSON body; printed as text"}
+
+
+# ---------- Additional endpoints for viewing stored data ----------
+
+@app.get("/results")
+async def get_results(limit: int = Query(10, description="Number of recent results to return")):
+    """Get recent webhook processing results from database"""
+    results = get_recent_results(limit)
+    return {
+        "ok": True,
+        "results": results,
+        "count": len(results)
+    }
+
+@app.get("/messages")
+async def get_messages(limit: int = Query(10, description="Number of recent messages to return")):
+    """Get recent messages from the message queue"""
+    messages = get_queued_messages(limit)
+    return {
+        "ok": True,
+        "messages": messages,
+        "count": len(messages)
+    }
+
+@app.get("/status")
+async def get_status():
+    """Get system status including recent activity"""
+    recent_results = get_recent_results(5)
+    recent_messages = get_queued_messages(5)
+    
+    return {
+        "ok": True,
+        "status": "running",
+        "recent_activity": {
+            "database_records": len(recent_results),
+            "queued_messages": len(recent_messages),
+            "last_processed": recent_results[0]["timestamp"] if recent_results else None
+        }
+    }
