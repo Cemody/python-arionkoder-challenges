@@ -30,6 +30,27 @@ class LazyCollection:
     def batch(self, size):
         return self._with_op(("batch", int(size)))
 
+    def chunk(self, size):
+        """Alias for batch() - groups elements into chunks of specified size"""
+        return self.batch(size)
+
+    def page(self, page_number, page_size):
+        """Get a specific page of results (1-indexed)"""
+        if page_number < 1:
+            raise ValueError("Page number must be >= 1")
+        offset = (page_number - 1) * page_size
+        return self.skip(offset).take(page_size)
+
+    def paginate(self, page_size):
+        """Return an iterator of pages, each containing up to page_size elements"""
+        page_num = 1
+        while True:
+            page_data = self.page(page_num, page_size).to_list()
+            if not page_data:
+                break
+            yield page_data
+            page_num += 1
+
     def cache(self, enabled=True):
         c = self._clone()
         c._cache_enabled = enabled
@@ -38,6 +59,92 @@ class LazyCollection:
     # --------- forcing evaluation ----------
     def to_list(self):
         return list(self)
+
+    # --------- reducing operations (force evaluation) ----------
+    def reduce(self, fn, initial=None):
+        """Apply a function of two arguments cumulatively to items, from left to right"""
+        from functools import reduce as builtin_reduce
+        items = list(self)
+        if initial is not None:
+            return builtin_reduce(fn, items, initial)
+        else:
+            return builtin_reduce(fn, items)
+
+    def sum(self, start=0):
+        """Return the sum of all elements"""
+        total = start
+        for item in self:
+            total += item
+        return total
+
+    def count(self):
+        """Return the count of elements"""
+        count = 0
+        for _ in self:
+            count += 1
+        return count
+
+    def min(self, default=None):
+        """Return the minimum element"""
+        try:
+            return min(self)
+        except ValueError:
+            if default is not None:
+                return default
+            raise
+
+    def max(self, default=None):
+        """Return the maximum element"""
+        try:
+            return max(self)
+        except ValueError:
+            if default is not None:
+                return default
+            raise
+
+    def first(self, default=None):
+        """Return the first element, or default if empty"""
+        for item in self:
+            return item
+        return default
+
+    def last(self, default=None):
+        """Return the last element, or default if empty"""
+        last_item = default
+        for item in self:
+            last_item = item
+        return last_item
+
+    def any(self, pred=None):
+        """Return True if any element is truthy (or satisfies predicate)"""
+        if pred is None:
+            return any(self)
+        else:
+            return any(pred(x) for x in self)
+
+    def all(self, pred=None):
+        """Return True if all elements are truthy (or satisfy predicate)"""
+        if pred is None:
+            return all(self)
+        else:
+            return all(pred(x) for x in self)
+
+    def find(self, pred):
+        """Return the first element that satisfies the predicate, or None"""
+        for item in self:
+            if pred(item):
+                return item
+        return None
+
+    def group_by(self, key_fn):
+        """Group elements by the result of key_fn"""
+        groups = {}
+        for item in self:
+            key = key_fn(item)
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(item)
+        return groups
 
     # --------- iterator protocol ----------
     def __iter__(self):
