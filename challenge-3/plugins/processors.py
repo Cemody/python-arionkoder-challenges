@@ -16,27 +16,32 @@ class JSONProcessor(DataProcessorBase):
     processor_type = "json"
     version = "1.0.0"
     
-    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process JSON-like data by normalizing and cleaning it"""
-        if not isinstance(data, dict):
-            raise ValueError("JSON processor requires dictionary input")
-        
-        # Normalize keys to lowercase
-        normalized = {}
+    def _normalize(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively normalize a dict's keys (lowercase + underscores)."""
+        normalized: Dict[str, Any] = {}
         for key, value in data.items():
             normalized_key = str(key).lower().replace(' ', '_')
-            
-            # Recursively process nested dictionaries
             if isinstance(value, dict):
-                normalized[normalized_key] = self.process(value)
+                normalized[normalized_key] = self._normalize(value)
             elif isinstance(value, list):
                 normalized[normalized_key] = [
-                    self.process(item) if isinstance(item, dict) else item
+                    self._normalize(item) if isinstance(item, dict) else item
                     for item in value
                 ]
             else:
                 normalized[normalized_key] = value
-        
+        return normalized
+
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process JSON-like data by normalizing and cleaning it.
+
+        Nested dicts are normalized in-place (no metadata wrapping) to meet
+        test expectations (e.g. processed['nested']['city']).
+        """
+        if not isinstance(data, dict):
+            raise ValueError("JSON processor requires dictionary input")
+
+        normalized = self._normalize(data)
         return {
             "processed_data": normalized,
             "original_keys": len(data),

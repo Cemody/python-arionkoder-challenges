@@ -62,7 +62,7 @@ async def root():
 async def health_check():
     """Return plugin + metrics health summary."""
     health_data = get_system_health()
-    
+
     return SystemHealthResponse(
         healthy=health_data["healthy"],
         plugin_registry_status=health_data["plugin_registry_status"],
@@ -216,7 +216,7 @@ async def process_data(
 
 @app.post("/validate", response_model=ValidationResponse)
 async def validate_data(
-    request: ValidationRequest = Depends()
+    request: ValidationRequest
 ) -> ValidationResponse:
     """Validate payload using validator plugin (rules + strict mode)."""
     start_time = datetime.now()
@@ -261,7 +261,7 @@ async def validate_data(
 
 @app.post("/transform", response_model=TransformResponse)
 async def transform_data(
-    request: TransformRequest = Depends()
+    request: TransformRequest
 ) -> TransformResponse:
     """Transform payload with transformer plugin (supports reverse)."""
     start_time = datetime.now()
@@ -308,13 +308,13 @@ async def transform_data(
 async def get_metrics() -> PerformanceResponse:
     """Return aggregated method performance metrics."""
     metrics_summary = get_performance_summary()
-    
+
     # Convert to the expected format
     formatted_metrics = {}
     total_calls = 0
     
     for method_key, stats in metrics_summary.items():
-        # Convert stats to PerformanceMetric format
+    # Convert stats to PerformanceMetric format
         from models import PerformanceMetric
         
         formatted_metrics[method_key] = PerformanceMetric(

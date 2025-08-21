@@ -320,14 +320,13 @@ class ContractEnforcerMeta(type):
             for method_key, times in PERFORMANCE_METRICS.items():
                 if method_key.startswith(class_name + '.'):
                     method_name = method_key.split('.', 1)[1]
-                    if times:
-                        stats[method_name] = {
-                            'call_count': len(times),
-                            'avg_time': sum(times) / len(times),
-                            'min_time': min(times),
-                            'max_time': max(times),
-                            'total_time': sum(times)
-                        }
+                    stats[method_name] = {
+                        'call_count': len(times),
+                        'avg_time': (sum(times) / len(times)) if times else 0.0,
+                        'min_time': min(times) if times else 0.0,
+                        'max_time': max(times) if times else 0.0,
+                        'total_time': sum(times)
+                    }
             return stats
         
         def reset_performance_stats(self):

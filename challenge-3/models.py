@@ -35,7 +35,7 @@ class ProcessRequest(BaseModel):
     processor_type: str = Field(
         ...,
         description="Type of processor to use",
-        example="JSONProcessor"
+    json_schema_extra={"example": "JSONProcessor"}
     )
     data: Dict[str, Any] = Field(
         ...,
@@ -64,7 +64,7 @@ class ValidationRequest(BaseModel):
     validator_type: str = Field(
         ...,
         description="Type of validator to use",
-        example="SchemaValidator"
+    json_schema_extra={"example": "SchemaValidator"}
     )
     data: Any = Field(
         ...,
@@ -93,7 +93,7 @@ class TransformRequest(BaseModel):
     transformer_type: str = Field(
         ...,
         description="Type of transformer to use",
-        example="UppercaseTransformer"
+    json_schema_extra={"example": "UppercaseTransformer"}
     )
     data: Any = Field(
         ...,
@@ -453,8 +453,8 @@ class ErrorResponse(BaseModel):
     )
     timestamp: datetime = Field(..., description="Error timestamp")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "ok": False,
                 "error": "Plugin contract violation: missing required method 'process'",
@@ -465,6 +465,7 @@ class ErrorResponse(BaseModel):
                 "timestamp": "2024-01-01T12:00:00Z"
             }
         }
+    )
 
 
 class BatchRequest(BaseModel):
@@ -472,8 +473,8 @@ class BatchRequest(BaseModel):
     operations: List[Dict[str, Any]] = Field(
         ...,
         description="List of operations to perform",
-        min_items=1,
-        max_items=100
+        min_length=1,
+        max_length=100
     )
     parallel: Optional[bool] = Field(
         False,
