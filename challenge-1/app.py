@@ -79,7 +79,7 @@ async def webhook(
         return result
 
     except Exception as e:
-    # If body not JSON: stream raw text lines
+        # If body not JSON: stream raw text lines
         try:
             line_buf = ""
             async for chunk in request.stream():
@@ -121,7 +121,7 @@ async def get_results(
     """Return recent stored webhook aggregation results."""
     try:
         results = get_recent_results(limit)
-    # Normalize to models
+        # Normalize to models
         database_results = []
         for result in results:
             if isinstance(result, dict):
@@ -153,7 +153,7 @@ async def get_messages(
     """Return recent queued message payloads."""
     try:
         messages = get_queued_messages(limit)
-    # Normalize to models
+        # Normalize to models
         queue_messages = []
         for message in messages:
             if isinstance(message, dict):
@@ -185,7 +185,7 @@ async def get_status() -> StatusResponse:
         recent_results = get_recent_results(5)
         recent_messages = get_queued_messages(5)
         
-    # Build activity snapshot (placeholder metrics where noted)
+        # Build activity snapshot (placeholder metrics where noted)
         activity = ActivitySummary(
             total_requests=len(recent_results),
             successful_requests=len([r for r in recent_results if r.get('ok', True)]),
@@ -222,7 +222,7 @@ async def health_check() -> HealthCheckResponse:
     start_time = datetime.datetime.now()
     
     try:
-    # Placeholder component checks (extend with real probes later)
+        # Placeholder component checks (extend with real probes later)
         checks = {
             "database": True,  # Could test actual database connection
             "message_queue": True,  # Could test actual queue connection
