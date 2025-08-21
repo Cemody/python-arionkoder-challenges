@@ -159,11 +159,18 @@ class LazyCollection:
         it = iter(self._source)
         for op, arg in self._ops:
             if op == "map":
-                fn = arg
-                it = (fn(x) for x in it)
+                # Fix closure issue by capturing the function in the default parameter
+                def _map(gen, fn=arg):
+                    for x in gen:
+                        yield fn(x)
+                it = _map(it)
             elif op == "filter":
-                pred = arg
-                it = (x for x in it if pred(x))
+                # Fix closure issue by capturing the predicate in the default parameter
+                def _filter(gen, pred=arg):
+                    for x in gen:
+                        if pred(x):
+                            yield x
+                it = _filter(it)
             elif op == "skip":
                 k = arg
                 def _skip(gen, k=k):
