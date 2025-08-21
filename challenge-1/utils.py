@@ -6,8 +6,7 @@ import json
 import sys
 import os
 from pathlib import Path
-
-from fastapi import FastAPI, Request, Query, Header
+from fastapi import Request
 
 def _iter_records(payload: Any) -> Iterator[Dict[str, Any]]:
     """
