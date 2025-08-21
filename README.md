@@ -23,7 +23,8 @@ pip install fastapi uvicorn aiohttp pydantic psutil ijson pytest
 Run a single challenge demo test:
 ```bash
 cd challenge-1
-pytest -q demo_test.py
+py demo_test.py
+pytest -q tests/
 ```
 Run all demo tests (bash one-liner):
 ```bash
@@ -47,7 +48,8 @@ uvicorn app:app --reload
 **Test:**
 ```bash
 cd challenge-1
-pytest -q demo_test.py
+py demo_test.py
+pytest -q tests/
 ```
 **Run App:** `uvicorn app:app --reload`
 
@@ -63,7 +65,8 @@ pytest -q demo_test.py
 **Test:**
 ```bash
 cd challenge-2
-pytest -q demo_test.py
+py demo_test.py
+pytest -q tests/
 ```
 **Run App:** `uvicorn app:app --reload`
 
@@ -79,7 +82,8 @@ pytest -q demo_test.py
 **Test:**
 ```bash
 cd challenge-3
-pytest -q demo_test.py
+py demo_test.py
+pytest -q tests/
 ```
 **Run App:** `uvicorn app:app --reload`
 
@@ -95,7 +99,8 @@ pytest -q demo_test.py
 **Test:**
 ```bash
 cd challenge-4
-pytest -q demo_test.py
+py demo_test.py
+pytest -q tests/
 ```
 **Demo Script:** Run `python demo.py` (or inspect `main.py` if present) for examples.
 
@@ -111,7 +116,8 @@ pytest -q demo_test.py
 **Test:**
 ```bash
 cd challenge-5
-pytest -q demo_test.py
+py demo_test.py
+pytest -q tests/
 ```
 **Run App:** `uvicorn app:app --reload`
 
