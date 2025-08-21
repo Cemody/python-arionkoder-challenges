@@ -18,7 +18,7 @@ from utils import ResourceManager
 
 
 def measure_performance(test_name, test_func):
-"""Helper to measure execution time and memory."""
+    """Helper to measure execution time and memory."""
     print(f"\n--- {test_name} ---")
     gc.collect()
     
@@ -66,7 +66,7 @@ def test_manage_multiple_resources():
     asyncio.run(_run_test())
 
 def test_proper_cleanup_on_exception():
-"""FEATURE: Provides proper cleanup in case of exceptions."""
+    """FEATURE: Provides proper cleanup in case of exceptions."""
     async def _run_test():
         print("🛡️  Testing proper cleanup after an exception...")
         
@@ -85,7 +85,7 @@ def test_proper_cleanup_on_exception():
     asyncio.run(_run_test())
 
 def test_performance_logging():
-"""FEATURE: Includes detailed logging and performance metrics."""
+    """FEATURE: Includes detailed logging and performance metrics."""
     async def _run_test():
         print("⏱️  Testing performance logging...")
         
@@ -114,7 +114,7 @@ def test_performance_logging():
     asyncio.run(_run_test())
 
 def test_nested_context_managers():
-"""CONSTRAINT: Must support nested context managers."""
+    """CONSTRAINT: Must support nested context managers."""
     async def _run_test():
                                                  
         with patch.object(
@@ -152,7 +152,7 @@ def test_nested_context_managers():
 
     asyncio.run(_run_test())
 def test_resource_acquisition_api():
-"""CONSTRAINT: Should provide a clear API for resource acquisition and release."""
+    """CONSTRAINT: Should provide a clear API for resource acquisition and release."""
     async def _run_test():
         print("🤝 Testing clear API for resource acquisition and release...")
         
@@ -172,7 +172,7 @@ def test_resource_acquisition_api():
     asyncio.run(_run_test())
 
 def main():
-"""Run all generalized tests for Challenge 2 based on docstring."""
+    """Run all generalized tests for Challenge 2 based on docstring."""
     print("🚀 Challenge 2 - ResourceManager Feature and Constraint Testing")
     print("=" * 70)
     

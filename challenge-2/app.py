@@ -36,7 +36,7 @@ async def test_resources(
     connection_logs = []
     
     try:
-    # Context manager orchestrates parallel connection lifecycle
+        # Context manager orchestrates parallel connection lifecycle
         async with ResourceManager(requested_resources) as resources:
             for resource_name, connection in resources.connections.items():
                 test_start = datetime.datetime.now()
@@ -117,7 +117,7 @@ async def test_resources(
         )
         
     except Exception as e:
-    # Persist failure log
+        # Persist failure log
         error_log = {
             "resource": "resource_manager",
             "action": "test_multiple",
