@@ -1,7 +1,5 @@
 import pytest
 import time
-import gc
-import tracemalloc
 from lazy import LazyCollection
 
 
