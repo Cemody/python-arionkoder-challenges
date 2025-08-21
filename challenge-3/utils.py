@@ -1,9 +1,4 @@
-"""
-Challenge 3 - Advanced Meta-Programming with API Contract Enforcement
-
-Core metaclasses and contract definitions for enforcing API contracts
-across multiple plugin classes.
-"""
+"""Metaclass + contract system for plugin registration & enforcement."""
 
 import inspect
 import time
@@ -31,18 +26,18 @@ PERFORMANCE_METRICS: Dict[str, List[float]] = {}
 
 
 class ContractViolationError(Exception):
-    """Raised when a class violates its API contract"""
+    """Raised when a class violates its contract."""
     pass
 
 
 class MethodSignatureError(Exception):
-    """Raised when a method signature doesn't match the contract"""
+    """Raised when method signature mismatches contract."""
     pass
 
 
 @dataclass
 class MethodContract:
-    """Defines the contract for a method"""
+    """Method requirement descriptor."""
     name: str
     required_params: List[str]
     param_types: Dict[str, type]
@@ -57,7 +52,7 @@ class MethodContract:
 
 @dataclass
 class ClassContract:
-    """Defines the complete contract for a class"""
+    """Composite class contract (methods, attrs, inheritance)."""
     name: str
     required_methods: List[MethodContract]
     optional_methods: List[MethodContract] = None
@@ -146,10 +141,7 @@ TRANSFORMER_CONTRACT = ClassContract(
 
 
 class ContractEnforcerMeta(type):
-    """
-    Metaclass that enforces API contracts on class creation and method calls.
-    This is the core meta-programming component that validates contracts.
-    """
+    """Metaclass enforcing declared ClassContract and instrumenting methods."""
     
     def __new__(cls, name, bases, namespace, contract: ClassContract = None, **kwargs):
         """Create a new class with contract enforcement"""
@@ -322,7 +314,7 @@ class ContractEnforcerMeta(type):
         """Add monitoring capabilities to the class"""
         
         def get_performance_stats(self):
-            """Get performance statistics for this instance"""
+            """Return performance stats (per method)."""
             class_name = self.__class__.__name__
             stats = {}
             for method_key, times in PERFORMANCE_METRICS.items():
@@ -339,7 +331,7 @@ class ContractEnforcerMeta(type):
             return stats
         
         def reset_performance_stats(self):
-            """Reset performance statistics for this instance"""
+            """Clear stored timings for this class."""
             class_name = self.__class__.__name__
             keys_to_clear = [k for k in PERFORMANCE_METRICS.keys() if k.startswith(class_name + '.')]
             for key in keys_to_clear:
@@ -401,14 +393,14 @@ class TransformerBase(metaclass=ContractEnforcerMeta, contract=TRANSFORMER_CONTR
 
 # Utility functions for working with the plugin system
 def get_registered_plugins(category: str = None) -> Dict[str, Any]:
-    """Get all registered plugins, optionally filtered by category"""
+    """Return plugin registry (optionally a single category)."""
     if category:
         return PLUGIN_REGISTRY.get(category, {})
     return PLUGIN_REGISTRY
 
 
 def create_plugin_instance(category: str, plugin_name: str, *args, **kwargs):
-    """Create an instance of a registered plugin"""
+    """Instantiate named plugin class."""
     if category not in PLUGIN_REGISTRY:
         raise ValueError(f"Unknown plugin category: {category}")
     
@@ -420,7 +412,7 @@ def create_plugin_instance(category: str, plugin_name: str, *args, **kwargs):
 
 
 def validate_contract_compliance(plugin_class: Type, contract: ClassContract) -> List[str]:
-    """Validate that a class complies with a contract and return any violations"""
+    """Return list of contract violation messages (empty if compliant)."""
     violations = []
     
     # Check required attributes
@@ -441,7 +433,7 @@ def validate_contract_compliance(plugin_class: Type, contract: ClassContract) ->
 
 
 def get_performance_summary() -> Dict[str, Any]:
-    """Get a summary of all performance metrics"""
+    """Build aggregated timing stats for all tracked methods."""
     summary = {}
     for method_key, times in PERFORMANCE_METRICS.items():
         if times:
@@ -456,7 +448,7 @@ def get_performance_summary() -> Dict[str, Any]:
 
 
 def clear_all_metrics():
-    """Clear all performance metrics"""
+    """Reset global performance metrics store."""
     global PERFORMANCE_METRICS
     PERFORMANCE_METRICS.clear()
 
@@ -464,14 +456,7 @@ def clear_all_metrics():
 async def process_data_with_plugin(processor_type: str, data: Dict[str, Any], 
                                  options: Dict[str, Any] = None, 
                                  validate_input: bool = True) -> Dict[str, Any]:
-    """
-    Process data using a registered processor plugin with proper error handling.
-    
-    Returns a dictionary with:
-    - processed_data: The processing result
-    - input_validation: Whether input validation passed
-    - metadata: Additional processing metadata
-    """
+    """Process data via processor plugin; optional input validation."""
     # Create processor instance
     processor = create_plugin_instance('processors', processor_type)
     
@@ -508,14 +493,7 @@ async def process_data_with_plugin(processor_type: str, data: Dict[str, Any],
 async def validate_data_with_plugin(validator_type: str, data: Any,
                                   rules: Dict[str, Any] = None,
                                   strict: bool = True) -> Dict[str, Any]:
-    """
-    Validate data using a registered validator plugin.
-    
-    Returns a dictionary with:
-    - is_valid: Whether validation passed
-    - errors: List of validation errors
-    - details: Additional validation details
-    """
+    """Validate data via validator plugin (rules + strict)."""
     # Create validator instance
     validator = create_plugin_instance('validators', validator_type)
     
@@ -546,14 +524,7 @@ async def validate_data_with_plugin(validator_type: str, data: Any,
 async def transform_data_with_plugin(transformer_type: str, data: Any,
                                    options: Dict[str, Any] = None,
                                    reverse: bool = False) -> Dict[str, Any]:
-    """
-    Transform data using a registered transformer plugin.
-    
-    Returns a dictionary with:
-    - transformed_data: The transformation result
-    - is_reversible: Whether the transformation can be reversed
-    - metadata: Additional transformation metadata
-    """
+    """Transform (or reverse) via transformer plugin."""
     # Create transformer instance
     transformer = create_plugin_instance('transformers', transformer_type)
     
@@ -580,7 +551,7 @@ async def transform_data_with_plugin(transformer_type: str, data: Any,
 
 
 def get_system_health() -> Dict[str, Any]:
-    """Get system health information including plugin registry status"""
+    """Compute health snapshot (contract compliance + perf)."""
     total_plugins = sum(len(plugins) for plugins in PLUGIN_REGISTRY.values())
     active_plugins = 0
     contract_violations = 0
@@ -611,4 +582,4 @@ def get_system_health() -> Dict[str, Any]:
             )
         }
     }
-    logger.info("Cleared all performance metrics")
+    # (end)

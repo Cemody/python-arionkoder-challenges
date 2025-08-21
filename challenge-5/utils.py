@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Task:
-    """Task data structure"""
+    """In-memory task record."""
     id: str
     name: str
     payload: Dict[str, Any]
@@ -38,14 +38,11 @@ class Task:
 
 
 class TaskProcessor:
-    """Process individual tasks - this runs in worker processes"""
+    """Executes task logic (run in worker process/thread)."""
 
     @staticmethod
     def process_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process a single task.
-        Returns a dict with a string 'status' field: 'completed' or 'failed'.
-        """
+        """Execute one task; return result dict with string status."""
         start_time = time.time()
         task_id = task_data['id']
         task_name = task_data['name']
@@ -87,7 +84,7 @@ class TaskProcessor:
 
     @staticmethod
     def _execute_task(task_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute the actual task logic"""
+        """Dispatch concrete task types (compute|io_operation|data_processing|error_task)."""
         if task_name == "compute":
             iterations = int(payload.get('iterations', 1_000_000))
             result = sum(i * i for i in range(iterations))
@@ -119,7 +116,7 @@ class TaskProcessor:
 
 
 class WorkerPool:
-    """Hybrid pool: processes for CPU-bound tasks, threads for I/O-bound tasks."""
+    """Hybrid execution pool (processes for CPU-bound, threads for others)."""
     CPU_BOUND_TASKS = {"compute"}  # route these to ProcessPoolExecutor
 
     def __init__(self, max_workers: int = 4):
@@ -209,7 +206,7 @@ class WorkerPool:
 
 
 class TaskScheduler:
-    """Main task scheduler that manages the task queue and worker pool"""
+    """Coordinates queueing, dispatch, completion tracking, and stats."""
 
     def __init__(self, max_workers: int = 4, queue_size: int = 100):
         self.max_workers = max_workers
@@ -236,7 +233,7 @@ class TaskScheduler:
         logger.info("Task scheduler started")
 
     async def shutdown(self):
-        """Shutdown the task scheduler"""
+        """Gracefully stop processing and worker pool."""
         # If already stopped, return quickly (works for both pool styles)
         if not self.running and not any((
             getattr(self.worker_pool, "executor", None),
@@ -275,7 +272,7 @@ class TaskScheduler:
         logger.info("Task scheduler shutdown complete")
 
     async def stop(self) -> None:
-        """Alias for shutdown() to satisfy tests that call stop()."""
+        """Alias for shutdown (compat)."""
         await self.shutdown()
 
     async def submit_task(self, task_data: Dict[str, Any]) -> bool:
@@ -429,7 +426,7 @@ class TaskScheduler:
         }
 
     async def health_check(self) -> bool:
-        """Check if scheduler is healthy (supports old/new WorkerPool)."""
+        """Return True if running and pool active."""
         return self.running and any((
             getattr(self.worker_pool, "executor", None),         # old single-executor
             getattr(self.worker_pool, "thread_executor", None),  # new hybrid thread pool
@@ -437,7 +434,7 @@ class TaskScheduler:
         ))
 
     async def worker_pool_active(self) -> bool:
-        """Check if worker pool is active (supports old/new WorkerPool)."""
+        """Return True if any executor alive."""
         return any((
             getattr(self.worker_pool, "executor", None),
             getattr(self.worker_pool, "thread_executor", None),
@@ -447,7 +444,7 @@ class TaskScheduler:
 
 # Database operations
 async def save_task_to_database(task: Dict[str, Any]):
-    """Save task information to database"""
+    """Persist task row (upsert)."""
     try:
         conn = sqlite3.connect('task_scheduler.db')
         cursor = conn.cursor()
@@ -498,7 +495,7 @@ async def save_task_to_database(task: Dict[str, Any]):
 
 
 async def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
-    """Get task status from database"""
+    """Fetch persisted task row -> status dict."""
     try:
         conn = sqlite3.connect('task_scheduler.db')
         cursor = conn.cursor()
@@ -527,7 +524,7 @@ async def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def get_worker_stats() -> Dict[str, Any]:
-    """Get worker statistics"""
+    """Return minimal process-level worker stats."""
     # This is a simplified version - in a real system you'd track more details
     return {
         'active_workers': mp.active_children().__len__(),
@@ -536,7 +533,7 @@ async def get_worker_stats() -> Dict[str, Any]:
 
 
 async def cleanup_completed_tasks(older_than_hours: int = 24):
-    """Clean up old completed tasks"""
+    """Delete completed/failed/cancelled tasks older than cutoff."""
     try:
         conn = sqlite3.connect('task_scheduler.db')
         cursor = conn.cursor()
@@ -560,7 +557,7 @@ async def cleanup_completed_tasks(older_than_hours: int = 24):
 
 
 async def get_system_metrics() -> Dict[str, Any]:
-    """Get system performance metrics"""
+    """Return basic system performance metrics (CPU, memory, uptime)."""
     try:
         # Get system metrics
         cpu_percent = psutil.cpu_percent(interval=1)

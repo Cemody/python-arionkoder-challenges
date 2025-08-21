@@ -1,8 +1,4 @@
-"""
-Challenge 3 - Pydantic Models
-
-Data models for the meta-programming plugin system with metaclass enforcement.
-"""
+"""Models for metaclass-enforced plugin system (processors / validators / transformers)."""
 
 from typing import Any, Dict, List, Optional, Union, Type
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -11,7 +7,7 @@ from enum import Enum
 
 
 class PluginType(str, Enum):
-    """Plugin type enumeration"""
+    """Plugin category."""
     PROCESSOR = "processor"
     VALIDATOR = "validator"
     TRANSFORMER = "transformer"
@@ -19,14 +15,14 @@ class PluginType(str, Enum):
 
 
 class ContractType(str, Enum):
-    """Contract type enumeration"""
+    """Contract category."""
     DATA_PROCESSOR = "data_processor"
     VALIDATOR = "validator"
     TRANSFORMER = "transformer"
 
 
 class PluginStatus(str, Enum):
-    """Plugin status enumeration"""
+    """Operational state."""
     ACTIVE = "active"
     INACTIVE = "inactive"
     ERROR = "error"
@@ -35,7 +31,7 @@ class PluginStatus(str, Enum):
 
 
 class ProcessRequest(BaseModel):
-    """Request for data processing"""
+    """Process call input."""
     processor_type: str = Field(
         ...,
         description="Type of processor to use",
@@ -57,14 +53,14 @@ class ProcessRequest(BaseModel):
     @field_validator('processor_type')
     @classmethod
     def validate_processor_type(cls, v):
-        """Validate processor type is not empty"""
+        """Non-empty name enforcement."""
         if not v or not v.strip():
             raise ValueError("Processor type cannot be empty")
         return v.strip()
 
 
 class ValidationRequest(BaseModel):
-    """Request for data validation"""
+    """Validation call input."""
     validator_type: str = Field(
         ...,
         description="Type of validator to use",
@@ -86,14 +82,14 @@ class ValidationRequest(BaseModel):
     @field_validator('validator_type')
     @classmethod
     def validate_validator_type(cls, v):
-        """Validate validator type is not empty"""
+        """Non-empty name enforcement."""
         if not v or not v.strip():
             raise ValueError("Validator type cannot be empty")
         return v.strip()
 
 
 class TransformRequest(BaseModel):
-    """Request for data transformation"""
+    """Transformation call input."""
     transformer_type: str = Field(
         ...,
         description="Type of transformer to use",
@@ -115,14 +111,14 @@ class TransformRequest(BaseModel):
     @field_validator('transformer_type')
     @classmethod
     def validate_transformer_type(cls, v):
-        """Validate transformer type is not empty"""
+        """Non-empty name enforcement."""
         if not v or not v.strip():
             raise ValueError("Transformer type cannot be empty")
         return v.strip()
 
 
 class PluginInstanceRequest(BaseModel):
-    """Request for creating plugin instance"""
+    """Instantiate plugin request."""
     plugin_category: PluginType = Field(
         ...,
         description="Plugin category"
@@ -142,7 +138,7 @@ class PluginInstanceRequest(BaseModel):
 
 
 class ProcessResponse(BaseModel):
-    """Response from data processing"""
+    """Process result envelope."""
     success: bool = Field(..., description="Processing success status")
     result: Dict[str, Any] = Field(..., description="Processing result")
     processor_type: str = Field(..., description="Processor type used")
@@ -176,7 +172,7 @@ class ProcessResponse(BaseModel):
 
 
 class ValidationResponse(BaseModel):
-    """Response from data validation"""
+    """Validation result envelope."""
     is_valid: bool = Field(..., description="Validation result")
     errors: List[str] = Field(
         default_factory=list,
@@ -213,7 +209,7 @@ class ValidationResponse(BaseModel):
 
 
 class TransformResponse(BaseModel):
-    """Response from data transformation"""
+    """Transformation result envelope."""
     success: bool = Field(..., description="Transformation success status")
     result: Any = Field(..., description="Transformation result")
     transformer_type: str = Field(..., description="Transformer type used")
@@ -247,7 +243,7 @@ class TransformResponse(BaseModel):
 
 
 class PluginInfo(BaseModel):
-    """Information about a registered plugin"""
+    """Registered plugin metadata."""
     name: str = Field(..., description="Plugin name")
     plugin_type: PluginType = Field(..., description="Plugin type/category")
     contract: ContractType = Field(..., description="Contract enforced by metaclass")
@@ -271,7 +267,7 @@ class PluginInfo(BaseModel):
 
 
 class PluginRegistryResponse(BaseModel):
-    """Response from plugin registry endpoint"""
+    """Registry snapshot payload."""
     ok: bool = Field(True, description="Request success status")
     plugins: Dict[str, Dict[str, PluginInfo]] = Field(
         ...,
@@ -290,7 +286,7 @@ class PluginRegistryResponse(BaseModel):
 
 
 class PerformanceMetric(BaseModel):
-    """Performance metric for a method"""
+    """Per-method performance stats."""
     method_name: str = Field(..., description="Method name")
     call_count: int = Field(..., description="Number of calls", ge=0)
     total_time: float = Field(..., description="Total execution time", ge=0)
@@ -304,7 +300,7 @@ class PerformanceMetric(BaseModel):
 
 
 class PerformanceResponse(BaseModel):
-    """Response from performance metrics endpoint"""
+    """Metrics aggregation response."""
     ok: bool = Field(True, description="Request success status")
     metrics: Dict[str, PerformanceMetric] = Field(
         ...,
@@ -349,7 +345,7 @@ class PerformanceResponse(BaseModel):
 
 
 class ContractValidationResult(BaseModel):
-    """Result of contract validation"""
+    """Contract compliance details."""
     is_compliant: bool = Field(..., description="Whether plugin is contract compliant")
     contract_type: ContractType = Field(..., description="Contract being validated")
     plugin_class: str = Field(..., description="Plugin class name")
@@ -374,7 +370,7 @@ class ContractValidationResult(BaseModel):
 
 
 class PluginInstanceResponse(BaseModel):
-    """Response from plugin instantiation"""
+    """Instantiate plugin result."""
     success: bool = Field(..., description="Instantiation success status")
     plugin_name: str = Field(..., description="Plugin name")
     plugin_type: PluginType = Field(..., description="Plugin type")

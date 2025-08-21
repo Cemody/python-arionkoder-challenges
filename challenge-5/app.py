@@ -1,14 +1,4 @@
-"""
-Distributed Task Scheduler Application
-
-A Python-based task scheduling system that distributes tasks across multiple worker processes.
-Features:
-- Task submission and management
-- Multi-process worker pool
-- Task priority and scheduling
-- Status monitoring and reporting
-- Resource management and load balancing
-"""
+"""Distributed task scheduler API (submit, monitor, metrics, cleanup)."""
 
 import datetime
 import uuid
@@ -38,7 +28,7 @@ scheduler = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
+    """Start/stop TaskScheduler on app lifespan."""
     global scheduler
     
     # Startup
@@ -66,10 +56,7 @@ async def submit_task(
     request: TaskSubmissionRequest,
     background_tasks: BackgroundTasks
 ) -> TaskSubmissionResponse:
-    """
-    Submit a new task for processing.
-    Tasks are distributed across available workers based on priority and load.
-    """
+    """Submit task to scheduler (queued by priority)."""
     start_time = datetime.datetime.now()
     
     # Initialize scheduler if not already done (for testing)
@@ -122,7 +109,7 @@ async def submit_task(
 
 @app.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)
 async def get_task_status_endpoint(task_id: str) -> TaskStatusResponse:
-    """Get the current status of a specific task"""
+    """Return live or persisted status for task_id."""
     try:
         # Initialize scheduler if not already done (for testing)
         global scheduler
@@ -161,7 +148,7 @@ async def get_task_status_endpoint(task_id: str) -> TaskStatusResponse:
 
 @app.get("/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str) -> Dict[str, Any]:
-    """Cancel a pending or running task"""
+    """Attempt to cancel pending/running task."""
     try:
         # Initialize scheduler if not already done (for testing)
         global scheduler
@@ -190,7 +177,7 @@ async def cancel_task(task_id: str) -> Dict[str, Any]:
 
 @app.get("/workers/status", response_model=WorkerStatusResponse)
 async def get_workers_status() -> WorkerStatusResponse:
-    """Get status information for all workers"""
+    """Return worker pool utilization + counts."""
     try:
         # Initialize scheduler if not already done (for testing)
         global scheduler
@@ -215,7 +202,7 @@ async def get_workers_status() -> WorkerStatusResponse:
 
 @app.get("/system/metrics", response_model=SystemMetricsResponse)
 async def get_system_metrics_endpoint() -> SystemMetricsResponse:
-    """Get comprehensive system metrics and performance data"""
+    """Return system + scheduler metrics snapshot."""
     try:
         # Initialize scheduler if not already done (for testing)
         global scheduler
@@ -245,7 +232,7 @@ async def cleanup_system(
     background_tasks: BackgroundTasks,
     older_than_hours: int = 24
 ) -> Dict[str, Any]:
-    """Clean up completed tasks older than specified hours"""
+    """Enqueue background cleanup of old completed tasks."""
     try:
         background_tasks.add_task(cleanup_completed_tasks, older_than_hours)
         
@@ -259,7 +246,7 @@ async def cleanup_system(
 
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
-    """Health check endpoint"""
+    """Lightweight scheduler health probe."""
     try:
         # Initialize scheduler if not already done (for testing)
         global scheduler

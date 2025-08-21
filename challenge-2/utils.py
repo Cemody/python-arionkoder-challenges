@@ -15,11 +15,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from collections.abc import MutableMapping
 
-# ---------- Performance Metrics and Logging Setup ----------
+################################ Performance & Logging ################################
 
 @dataclass
 class PerformanceMetrics:
-    """Track performance metrics for resource operations"""
+    """In-memory counters + timings per resource operation."""
     operation_start: float = field(default_factory=time.time)
     operation_end: Optional[float] = None
     connection_time: Optional[float] = None
@@ -29,11 +29,11 @@ class PerformanceMetrics:
     success_count: int = 0
     
     def start_operation(self):
-        """Start timing an operation"""
+        """Mark operation start time."""
         self.operation_start = time.time()
     
     def end_operation(self, success: bool = True):
-        """End timing an operation"""
+        """Record end time & success/error counters."""
         self.operation_end = time.time()
         self.execution_time = self.operation_end - self.operation_start
         if success:
@@ -42,7 +42,7 @@ class PerformanceMetrics:
             self.error_count += 1
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert metrics to dictionary"""
+        """Serialize metrics snapshot."""
         return {
             "connection_time": self.connection_time,
             "execution_time": self.execution_time,
@@ -54,7 +54,7 @@ class PerformanceMetrics:
 
 # Configure structured logging
 def setup_logging():
-    """Setup structured logging for the resource manager"""
+    """Configure structured logger (stdout + file)."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s',
@@ -67,10 +67,10 @@ def setup_logging():
 
 logger = setup_logging()
 
-# ---------- Resource Connection Protocols ----------
+################################ Abstract Connection Protocol ################################
 
 class ResourceConnection(Protocol):
-    """Protocol defining the interface for all resource connections"""
+    """Interface contract each resource connection implements."""
     
     async def connect(self) -> None:
         """Establish connection to the resource"""
@@ -88,10 +88,10 @@ class ResourceConnection(Protocol):
         """Execute an operation on the resource"""
         ...
 
-# ---------- Concrete Resource Connection Classes ----------
+################################ Concrete Resource Connections ################################
 
 class DatabaseConnection:
-    """Manages SQLite database connections with performance tracking"""
+    """SQLite connection + simple perf tracking."""
     
     def __init__(self, db_path: str = "resource_manager.db"):
         self.db_path = Path(db_path)
@@ -102,7 +102,7 @@ class DatabaseConnection:
         self.logger = logging.getLogger(f'resource_manager.database')
     
     async def connect(self) -> None:
-        """Establish database connection with performance tracking"""
+        """Open DB connection, initialize schema if needed."""
         connect_start = time.time()
         self.logger.info(f"Attempting to connect to database: {self.db_path}")
         
@@ -126,7 +126,7 @@ class DatabaseConnection:
             raise
     
     def _connect_sync(self):
-        """Synchronous database connection with initialization"""
+        """Blocking open + schema creation."""
         try:
             # Use check_same_thread=False to allow use from different threads
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -174,7 +174,7 @@ class DatabaseConnection:
             raise
     
     async def disconnect(self) -> None:
-        """Close database connection with cleanup tracking"""
+        """Close connection; clear references."""
         disconnect_start = time.time()
         self.logger.info("Disconnecting from database")
         
@@ -199,7 +199,7 @@ class DatabaseConnection:
                 raise
     
     async def test_connection(self) -> Dict[str, Any]:
-        """Test database connection with performance metrics"""
+        """Return lightweight DB stats + perf metrics."""
         if not self.connected:
             raise RuntimeError("Database not connected")
         
@@ -223,7 +223,7 @@ class DatabaseConnection:
             raise
     
     def _test_connection_sync(self) -> Dict[str, Any]:
-        """Synchronous database test with detailed metrics"""
+        """Blocking metadata / counts query."""
         try:
             cursor = self.connection.cursor()
             
@@ -254,7 +254,7 @@ class DatabaseConnection:
             raise
     
     async def execute_operation(self, operation: str, data: Dict[str, Any]) -> Any:
-        """Execute database operations with performance tracking"""
+        """Run supported DB operation (query|insert|update)."""
         if not self.connected:
             raise RuntimeError("Database not connected")
         
@@ -305,7 +305,7 @@ class DatabaseConnection:
             raise
     
     async def _save_performance_metrics(self, operation: str, execution_time: float, success: bool):
-        """Save performance metrics to database"""
+        """Persist single perf metric row (async wrapper)."""
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self._save_metrics_sync, operation, execution_time, success)
@@ -313,7 +313,7 @@ class DatabaseConnection:
             self.logger.warning(f"Failed to save performance metrics: {e}")
     
     def _save_metrics_sync(self, operation: str, execution_time: float, success: bool):
-        """Synchronous performance metrics saving"""
+        """Blocking insert of perf metric row."""
         try:
             cursor = self.connection.cursor()
             cursor.execute("""
@@ -325,7 +325,7 @@ class DatabaseConnection:
             self.logger.warning(f"Performance metrics save failed: {e}")
     
     def _execute_query(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Execute a query operation"""
+        """SELECT rows limited by provided 'limit'."""
         table = data.get("table", "test_data")
         limit = data.get("limit", 10)
         
@@ -338,7 +338,7 @@ class DatabaseConnection:
         return [dict(zip(columns, row)) for row in rows]
     
     def _execute_insert(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute an insert operation"""
+        """INSERT one test_data row."""
         name = data.get("name", f"test_record_{int(time.time())}")
         value = data.get("value", "test_value")
         
@@ -349,7 +349,7 @@ class DatabaseConnection:
         return {"inserted_id": cursor.lastrowid, "name": name, "value": value}
     
     def _execute_update(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute an update operation"""
+        """UPDATE fields on test_data row by id."""
         record_id = data.get("id")
         if not record_id:
             raise ValueError("ID is required for update operation")
@@ -371,7 +371,7 @@ class DatabaseConnection:
         return {"updated_id": record_id, "affected_rows": cursor.rowcount}
 
 class APIConnection:
-    """Manages HTTP API connections"""
+    """aiohttp session wrapper for simple REST ops."""
     
     def __init__(self, base_url: str = "https://httpbin.org"):
         self.base_url = base_url
@@ -380,7 +380,7 @@ class APIConnection:
         self.connection_time = None
     
     async def connect(self) -> None:
-        """Establish HTTP session"""
+        """Open aiohttp session."""
         try:
             self.session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=30),
@@ -394,14 +394,14 @@ class APIConnection:
             raise
     
     async def disconnect(self) -> None:
-        """Close HTTP session"""
+        """Close session."""
         if self.session:
             await self.session.close()
             self.connected = False
             print(f"✓ API session closed: {self.base_url}")
     
     async def test_connection(self) -> Dict[str, Any]:
-        """Test API connection"""
+        """Issue simple GET for liveness metadata."""
         if not self.connected:
             raise RuntimeError("API session not connected")
         
@@ -421,7 +421,7 @@ class APIConnection:
             raise RuntimeError(f"API test failed: {e}")
     
     async def execute_operation(self, operation: str, data: Dict[str, Any]) -> Any:
-        """Execute API operations"""
+        """Dispatch REST method (get|post|put|delete)."""
         if not self.connected:
             raise RuntimeError("API session not connected")
         
@@ -437,7 +437,7 @@ class APIConnection:
             raise ValueError(f"Unsupported API operation: {operation}")
     
     async def _execute_get(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute GET request"""
+        """Perform GET request with optional params."""
         endpoint = data.get("endpoint", "/get")
         params = data.get("params", {})
         
@@ -451,7 +451,7 @@ class APIConnection:
             }
     
     async def _execute_post(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute POST request"""
+        """Perform POST with JSON body."""
         endpoint = data.get("endpoint", "/post")
         payload = data.get("payload", {})
         
@@ -465,7 +465,7 @@ class APIConnection:
             }
     
     async def _execute_put(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute PUT request"""
+        """Perform PUT with JSON body."""
         endpoint = data.get("endpoint", "/put")
         payload = data.get("payload", {})
         
@@ -479,7 +479,7 @@ class APIConnection:
             }
     
     async def _execute_delete(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute DELETE request"""
+        """Perform DELETE request."""
         endpoint = data.get("endpoint", "/delete")
         
         url = f"{self.base_url}{endpoint}"
@@ -492,7 +492,7 @@ class APIConnection:
             }
 
 class CacheConnection:
-    """Manages in-memory cache connections with performance tracking"""
+    """Simple in-memory key/value cache w/ LRU eviction + metrics."""
     
     def __init__(self, max_size: int = 1000):
         self.max_size = max_size
@@ -507,7 +507,7 @@ class CacheConnection:
         self.eviction_count = 0
     
     async def connect(self) -> None:
-        """Initialize cache with performance tracking"""
+        """Init cache structures & reset counters."""
         connect_start = time.time()
         self.logger.info(f"Initializing cache with max_size={self.max_size}")
         
@@ -533,7 +533,7 @@ class CacheConnection:
             raise
     
     async def disconnect(self) -> None:
-        """Clear cache with cleanup tracking"""
+        """Clear all entries & release refs."""
         disconnect_start = time.time()
         self.logger.info("Clearing cache")
         
@@ -558,7 +558,7 @@ class CacheConnection:
                 raise
     
     async def test_connection(self) -> Dict[str, Any]:
-        """Test cache connection with performance metrics"""
+        """Insert temp key then return stats."""
         if not self.connected:
             raise RuntimeError("Cache not connected")
         
@@ -597,7 +597,7 @@ class CacheConnection:
             raise
     
     async def execute_operation(self, operation: str, data: Dict[str, Any]) -> Any:
-        """Execute cache operations with performance tracking"""
+        """Run cache op (get|set|delete|clear|stats)."""
         if not self.connected:
             raise RuntimeError("Cache not connected")
         
@@ -633,7 +633,7 @@ class CacheConnection:
             raise
     
     async def _execute_get(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Get value from cache with hit/miss tracking"""
+        """Lookup key; record hit/miss."""
         key = data.get("key")
         if not key:
             raise ValueError("Key is required for get operation")
@@ -660,7 +660,7 @@ class CacheConnection:
         }
     
     async def _execute_set(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Set value in cache with LRU eviction tracking"""
+        """Store key; evict LRU if full."""
         key = data.get("key")
         value = data.get("value")
         
@@ -692,7 +692,7 @@ class CacheConnection:
         }
     
     async def _execute_delete(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Delete value from cache"""
+        """Remove key if present."""
         key = data.get("key")
         if not key:
             raise ValueError("Key is required for delete operation")
@@ -709,7 +709,7 @@ class CacheConnection:
         }
     
     async def _execute_clear(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Clear all cache entries"""
+        """Remove all entries."""
         size_before = len(self.cache)
         self.cache.clear()
         self.access_times.clear()
@@ -720,7 +720,7 @@ class CacheConnection:
         }
     
     async def _execute_stats(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Return current cache metadata."""
         return {
             "max_size": self.max_size,
             "current_size": len(self.cache),
@@ -732,17 +732,7 @@ class CacheConnection:
 # ---------- Custom Context Manager ----------
 
 class ResourceManager(dict):
-    """
-    Robust context manager for managing multiple external resource connections.
-    Automatically handles connection setup, cleanup, error recovery, and performance tracking.
-    
-    Features:
-    - Supports nested context managers
-    - Clear API for resource acquisition and release
-    - Parallel connection setup and cleanup
-    - Comprehensive error handling and logging
-    - Performance metrics tracking
-    """
+    """Async context manager orchestrating multiple resource connections (parallel open/close + metrics)."""
     
     def __init__(self, resource_types: List[str]):
         self.resource_types = resource_types
@@ -756,7 +746,7 @@ class ResourceManager(dict):
         self._context_id = None
     
     async def __aenter__(self) -> "ResourceManager":
-        """Enter the context - establish all connections with detailed tracking"""
+        """Open all requested resources in parallel."""
         import uuid
         self._context_id = str(uuid.uuid4())[:8]
         self._is_entered = True
@@ -801,7 +791,7 @@ class ResourceManager(dict):
         return self
     
     async def _establish_connection(self, resource_type: str):
-        """Establish a single connection with timing"""
+        """Connect one resource; record setup time."""
         connect_start = time.time()
         
         try:
@@ -831,7 +821,7 @@ class ResourceManager(dict):
             raise
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit the context - cleanup all connections with detailed tracking"""
+        """Close all resources; emit summary; propagate exceptions."""
         cleanup_start = time.time()
         self.logger.info(f"Starting cleanup of {len(self.connections)} connections")
         print(f"🔌 Cleaning up {len(self.connections)} connections")
@@ -878,7 +868,7 @@ class ResourceManager(dict):
             return False  # Propagate the exception
     
     async def _safe_disconnect(self, resource_type: str, connection: Any, cleanup_metrics: Dict[str, float]):
-        """Safely disconnect a resource with performance tracking"""
+        """Attempt disconnect; swallow errors; record duration."""
         disconnect_start = time.time()
         
         try:
@@ -895,7 +885,7 @@ class ResourceManager(dict):
             # Don't re-raise, continue with other cleanups
     
     def get_performance_summary(self) -> Dict[str, Any]:
-        """Get comprehensive performance summary"""
+        """Return connection timing + success stats."""
         return {
             "setup_metrics": self.setup_metrics,
             "connection_errors": self.connection_errors,
@@ -907,10 +897,7 @@ class ResourceManager(dict):
     # ---------- Enhanced API for Resource Acquisition and Release ----------
     
     async def acquire_resource(self, resource_type: str) -> Any:
-        """
-        Explicitly acquire a single resource outside of context manager.
-        Useful for dynamic resource acquisition.
-        """
+        """Dynamically add a resource during an active context."""
         if not self._is_entered:
             raise RuntimeError("Cannot acquire resource outside of context manager")
             
@@ -930,10 +917,7 @@ class ResourceManager(dict):
             raise RuntimeError(f"Failed to acquire resource: {resource_type}")
     
     async def release_resource(self, resource_type: str) -> bool:
-        """
-        Explicitly release a single resource.
-        Returns True if successfully released, False otherwise.
-        """
+        """Detach & close a specific resource (True if released)."""
         if resource_type not in self.connections:
             self.logger.warning(f"Cannot release resource '{resource_type}': not connected")
             return False
@@ -952,29 +936,26 @@ class ResourceManager(dict):
             return False
     
     def get_acquired_resources(self) -> List[str]:
-        """Get list of currently acquired resources"""
+        """List acquired resource names."""
         return list(self.connections.keys())
     
     def get_failed_resources(self) -> Dict[str, str]:
-        """Get dictionary of failed resources and their error messages"""
+        """Dict of resource -> error message for failures."""
         return self.connection_errors.copy()
     
     def is_resource_acquired(self, resource_type: str) -> bool:
-        """Check if a specific resource is currently acquired"""
+        """Return True if resource currently active."""
         return resource_type in self.connections
     
     def get_resource(self, resource_type: str) -> Any:
-        """
-        Get a specific acquired resource.
-        Raises KeyError if resource is not acquired.
-        """
+        """Return resource or raise KeyError if missing."""
         if resource_type not in self.connections:
             available = list(self.connections.keys())
             raise KeyError(f"Resource '{resource_type}' not acquired. Available: {available}")
         return self.connections[resource_type]
     
     async def test_all_resources(self) -> Dict[str, Any]:
-        """Test all acquired resources and return their status"""
+        """Invoke test_connection on each active resource."""
         if not self._is_entered:
             raise RuntimeError("Cannot test resources outside of context manager")
             
@@ -999,48 +980,48 @@ class ResourceManager(dict):
     # ---------- Dictionary-like Interface ----------
     
     def __getitem__(self, key: str) -> Any:
-        """Allow dictionary-style access to resources"""
+        """Dict-style access wrapper."""
         return self.connections[key]
     
     def __setitem__(self, key: str, value: Any) -> None:
-        """Allow dictionary-style assignment (internal use only)"""
+        """Dict-style assignment."""
         self.connections[key] = value
     
     def __delitem__(self, key: str) -> None:
-        """Allow dictionary-style deletion"""
+        """Dict-style deletion."""
         if key in self.connections:
             del self.connections[key]
         else:
             raise KeyError(f"Resource '{key}' not found")
     
     def __contains__(self, key: str) -> bool:
-        """Allow 'in' operator to check if resource exists"""
+        """Membership check."""
         return key in self.connections
     
     def __len__(self) -> int:
-        """Return the number of acquired resources"""
+        """Count of active resources."""
         return len(self.connections)
     
     def __iter__(self):
-        """Allow iteration over resource names"""
+        """Iterate resource names."""
         return iter(self.connections)
     
     def keys(self):
-        """Return resource names (dictionary-like interface)"""
+        """Keys view."""
         return self.connections.keys()
     
     def values(self):
-        """Return resource connections (dictionary-like interface)"""
+        """Values view."""
         return self.connections.values()
     
     def items(self):
-        """Return resource name-connection pairs (dictionary-like interface)"""
+        """Items view."""
         return self.connections.items()
 
-# ---------- Enhanced Logging Functions ----------
+################################ Logging Helpers ################################
 
 async def save_connection_log(logs: List[Dict[str, Any]]):
-    """Save connection logs to database with performance tracking"""
+    """Persist connection log entries (batched)."""
     save_start = time.time()
     logger.debug(f"Saving {len(logs)} connection logs")
     
@@ -1060,7 +1041,7 @@ async def save_connection_log(logs: List[Dict[str, Any]]):
         print(f"✗ Failed to save connection logs: {e}")
 
 def _save_logs_sync(connection, logs: List[Dict[str, Any]]):
-    """Synchronous log saving with enhanced schema"""
+    """Blocking insert for connection logs."""
     cursor = connection.cursor()
     
     for log in logs:
@@ -1080,7 +1061,7 @@ def _save_logs_sync(connection, logs: List[Dict[str, Any]]):
     connection.commit()
 
 async def get_connection_logs(limit: int = 20) -> List[Dict[str, Any]]:
-    """Get recent connection logs from database"""
+    """Fetch recent connection log rows."""
     query_start = time.time()
     logger.debug(f"Retrieving {limit} connection logs")
     
@@ -1102,7 +1083,7 @@ async def get_connection_logs(limit: int = 20) -> List[Dict[str, Any]]:
         return []
 
 def _get_logs_sync(connection, limit: int) -> List[Dict[str, Any]]:
-    """Synchronous log retrieval with enhanced fields"""
+    """Blocking select for logs."""
     cursor = connection.cursor()
     cursor.execute("""
         SELECT resource, action, status, error, execution_time, memory_usage, timestamp, created_at
@@ -1126,10 +1107,10 @@ def _get_logs_sync(connection, limit: int) -> List[Dict[str, Any]]:
     
     return results
 
-# ---------- Performance Analytics Functions ----------
+################################ Analytics ################################
 
 async def get_performance_analytics(resource_type: Optional[str] = None, hours: int = 24) -> Dict[str, Any]:
-    """Get comprehensive performance analytics"""
+    """Aggregate performance metrics over recent hours."""
     analytics_start = time.time()
     logger.info(f"Generating performance analytics for {resource_type or 'all resources'} over {hours} hours")
     
@@ -1151,7 +1132,7 @@ async def get_performance_analytics(resource_type: Optional[str] = None, hours: 
         return {"error": str(e), "analytics_generation_time": analytics_time}
 
 def _get_analytics_sync(connection, resource_type: Optional[str], hours: int) -> Dict[str, Any]:
-    """Synchronous performance analytics generation"""
+    """Blocking analytics query + summarization."""
     cursor = connection.cursor()
     
     # Base query with time filter

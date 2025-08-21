@@ -28,10 +28,7 @@ app = FastAPI()
 async def test_resources(
     params: ResourceTestParams = Depends()
 ) -> ResourceTestResponse:
-    """
-    Test multiple resource connections using the custom context manager.
-    Demonstrates robust resource management with automatic cleanup.
-    """
+    """Test requested resource types (connect, basic op, metrics)."""
     start_time = datetime.datetime.now()
     requested_resources = params.get_resource_types_list()
     
@@ -39,18 +36,18 @@ async def test_resources(
     connection_logs = []
     
     try:
-        # Use the custom context manager to handle multiple resources
+    # Context manager orchestrates parallel connection lifecycle
         async with ResourceManager(requested_resources) as resources:
             for resource_name, connection in resources.connections.items():
                 test_start = datetime.datetime.now()
                 
                 try:
-                    # Test each resource connection
+                    # Invoke per-resource test
                     test_result = await connection.test_connection()
                     test_end = datetime.datetime.now()
                     test_duration = (test_end - test_start).total_seconds() * 1000
                     
-                    # Create connection metrics
+                    # Build metrics object
                     metrics = ConnectionMetrics(
                         connection_time_ms=test_duration,
                         response_time_ms=test_duration,
@@ -95,15 +92,15 @@ async def test_resources(
                         "timestamp": test_start.isoformat()
                     })
         
-        # Save connection logs
+    # Persist connection logs
         await save_connection_log(connection_logs)
         
-        # Calculate totals
+    # Summary metrics
         end_time = datetime.datetime.now()
         total_duration = (end_time - start_time).total_seconds() * 1000
         successful_count = sum(1 for r in results.values() if r.success)
         
-        # Create summary
+    # Build outcome summary
         summary = {
             "total_tested": len(results),
             "successful": successful_count,
@@ -120,7 +117,7 @@ async def test_resources(
         )
         
     except Exception as e:
-        # Log the error
+    # Persist failure log
         error_log = {
             "resource": "resource_manager",
             "action": "test_multiple",
@@ -145,10 +142,7 @@ async def execute_resource_operations(
     request: Request,
     operations: Optional[str] = Query(None, description="JSON string of operations to execute")
 ) -> Dict[str, Any]:
-    """
-    Execute operations on multiple resources using the context manager.
-    Example operations: [{"resource": "database", "operation": "query", "data": {...}}]
-    """
+    """Execute batch of resource operations (JSON encoded list)."""
     if not operations:
         raise HTTPException(status_code=400, detail="Operations parameter is required")
     
@@ -160,7 +154,7 @@ async def execute_resource_operations(
     if not isinstance(operation_list, list):
         raise HTTPException(status_code=400, detail="Operations must be a list")
     
-    # Extract required resource types from operations
+    # Determine required resource types
     required_resources = list(set(op.get("resource") for op in operation_list if op.get("resource")))
     
     results = {}
@@ -216,7 +210,7 @@ async def execute_resource_operations(
                         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
                     })
         
-        # Save connection logs
+    # Persist logs
         await save_connection_log(connection_logs)
         
         return {
@@ -239,11 +233,11 @@ async def execute_resource_operations(
         
         raise HTTPException(status_code=500, detail=f"Resource execution error: {str(e)}")
 
-# ---------- Additional endpoints for monitoring and management ----------
+################################ Monitoring & Management ################################
 
 @app.get("/resources/status", response_model=StatusResponse)
 async def get_resource_status() -> StatusResponse:
-    """Get status of all available resource types"""
+    """Return quick health snapshot for each core resource type."""
     start_time = datetime.datetime.now()
     available_resources = ["database", "api", "cache"]
     resource_health = {}
@@ -279,7 +273,7 @@ async def get_resource_status() -> StatusResponse:
 async def get_logs(
     limit: int = Query(20, description="Number of recent logs to return", ge=1, le=1000)
 ) -> ConnectionLogsResponse:
-    """Get recent connection logs"""
+    """Return recent connection log entries."""
     try:
         logs = await get_connection_logs(limit)
         # Convert logs to ConnectionLog models if needed
@@ -311,7 +305,7 @@ async def get_analytics(
     resource_type: Optional[str] = Query(None, description="Filter by resource type"),
     hours: int = Query(24, description="Time period in hours", ge=1, le=168)
 ) -> PerformanceResponse:
-    """Get comprehensive performance analytics"""
+    """Return aggregated performance analytics (optionally filtered)."""
     try:
         analytics = await get_performance_analytics(resource_type, hours)
         
@@ -337,7 +331,7 @@ async def get_analytics(
 
 @app.get("/resources/health")
 async def health_check():
-    """Enhanced health check endpoint with performance summary"""
+    """Lightweight multi-resource health probe with timings."""
     try:
         # Test each resource type quickly
         health_results = {}

@@ -1,6 +1,4 @@
-"""
-Data models for the streaming data processing webhook system.
-"""
+"""Models for streaming webhook ingestion + aggregation API."""
 
 from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -9,7 +7,7 @@ import re
 
 
 class WebhookParams(BaseModel):
-    """Parameters for webhook processing"""
+    """Query parameters controlling projection & aggregation."""
     group_by: Optional[str] = Field(
         None, 
         description="Field name to group by for aggregation"
@@ -26,7 +24,7 @@ class WebhookParams(BaseModel):
     @field_validator('include')
     @classmethod
     def validate_include_fields(cls, v):
-        """Validate include fields are properly formatted"""
+        """Validate comma list of field names."""
         if v:
             fields = [f.strip() for f in v.split(",")]
             if any(not f for f in fields):
@@ -39,21 +37,21 @@ class WebhookParams(BaseModel):
     
     @model_validator(mode='after')
     def validate_aggregation_params(self):
-        """Validate that sum_field is only used with group_by"""
+        """Enforce sum_field requires group_by."""
         if self.sum_field and not self.group_by:
             raise ValueError("sum_field requires group_by to be specified")
         
         return self
     
     def get_included_fields(self) -> Optional[Set[str]]:
-        """Get the set of included fields for projection"""
+        """Return projection field set or None."""
         if self.include:
             return set(f.strip() for f in self.include.split(","))
         return None
 
 
 class WebhookResponse(BaseModel):
-    """Response from webhook processing"""
+    """Webhook processing summary + optional aggregation."""
     ok: bool = Field(True, description="Processing success status")
     aggregation: Optional[Dict[Any, Any]] = Field(
         None, 
@@ -95,7 +93,7 @@ class WebhookResponse(BaseModel):
 
 
 class DatabaseResult(BaseModel):
-    """Database operation result"""
+    """Stored aggregation row metadata."""
     timestamp: str = Field(..., description="Processing timestamp")
     group_by_field: Optional[str] = Field(None, description="Field used for grouping")
     sum_field: Optional[str] = Field(None, description="Field used for summing")
@@ -105,7 +103,7 @@ class DatabaseResult(BaseModel):
 
 
 class MessageQueueResult(BaseModel):
-    """Message queue operation result"""
+    """Queued message envelope."""
     id: str = Field(..., description="Message ID")
     timestamp: str = Field(..., description="Message timestamp")
     payload: Dict[str, Any] = Field(..., description="Message payload")
@@ -113,7 +111,7 @@ class MessageQueueResult(BaseModel):
 
 
 class ResultsResponse(BaseModel):
-    """Response for results endpoint"""
+    """List of recent database aggregation results."""
     ok: bool = Field(True, description="Request success status")
     results: List[DatabaseResult] = Field(
         ..., 
@@ -131,7 +129,7 @@ class ResultsResponse(BaseModel):
 
 
 class MessagesResponse(BaseModel):
-    """Response for messages endpoint"""
+    """List of recent queue messages."""
     ok: bool = Field(True, description="Request success status")
     messages: List[MessageQueueResult] = Field(
         ..., 
@@ -149,7 +147,7 @@ class MessagesResponse(BaseModel):
 
 
 class ActivitySummary(BaseModel):
-    """Recent activity summary"""
+    """Recent request + processing activity snapshot."""
     total_requests: int = Field(..., description="Total requests processed", ge=0)
     successful_requests: int = Field(..., description="Successful requests", ge=0)
     failed_requests: int = Field(..., description="Failed requests", ge=0)
@@ -166,7 +164,7 @@ class ActivitySummary(BaseModel):
 
 
 class StatusResponse(BaseModel):
-    """Response for status endpoint"""
+    """System status payload."""
     ok: bool = Field(True, description="System status")
     status: str = Field(
         ..., 
@@ -192,7 +190,7 @@ class StatusResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Error response model"""
+    """Standard error envelope."""
     ok: bool = Field(False, description="Request success status")
     error: str = Field(..., description="Error message")
     error_code: Optional[str] = Field(None, description="Error code")
@@ -216,7 +214,7 @@ class ErrorResponse(BaseModel):
 
 
 class HealthCheckResponse(BaseModel):
-    """Health check response"""
+    """Health probe result."""
     status: str = Field(..., description="Health status")
     timestamp: datetime = Field(..., description="Health check timestamp")
     checks: Dict[str, bool] = Field(

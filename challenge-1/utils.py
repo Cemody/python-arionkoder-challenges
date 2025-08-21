@@ -9,13 +9,7 @@ from pathlib import Path
 from fastapi import Request
 
 def _iter_records(payload: Any) -> Iterator[Dict[str, Any]]:
-    """
-    Lazily walk the payload and yield dict-like 'records'.
-    Handles:
-      - a list of objects
-      - nested objects under common collection keys
-      - a single object
-    """
+    """Yield dict records from lists / single object, recursing common collection keys."""
     # If it's a list/tuple, walk each item
     if isinstance(payload, (list, tuple)):
         for item in payload:
@@ -34,9 +28,7 @@ def _iter_records(payload: Any) -> Iterator[Dict[str, Any]]:
                 yield from _iter_records(child)
 
 def _project(fields: Optional[Set[str]]) -> callable:
-    """
-    Return a projector function that keeps only certain fields (if provided).
-    """
+    """Return projection fn retaining only provided field names (if any)."""
     if not fields:
         return lambda r: r
     return lambda r: {k: r.get(k) for k in fields if k in r}
@@ -46,11 +38,7 @@ def _aggregate(
     group_by: str,
     sum_field: Optional[str] = None,
 ) -> Dict[Any, float]:
-    """
-    Streaming aggregation using iterators.
-    If sum_field is provided -> sum per group.
-    Otherwise -> count per group.
-    """
+    """Aggregate by key: sum(sum_field) or count if sum_field absent."""
     agg: Dict[Any, float] = {}
     for rec in records:
         if group_by not in rec:
@@ -91,9 +79,7 @@ def _aggregate_in_place(
 # ---------- Streaming parsers ----------
 
 async def iter_ndjson_records(request: Request) -> AsyncIterator[Dict[str, Any]]:
-    """
-    Stream NDJSON (one JSON object per line) without buffering the whole body.
-    """
+    """Stream NDJSON line by line without full buffering."""
     buffer = ""
     async for chunk in request.stream():
         buffer += chunk.decode("utf-8", errors="replace")
@@ -134,10 +120,7 @@ async def iter_ndjson_records(request: Request) -> AsyncIterator[Dict[str, Any]]
             sys.stdout.flush()
 
 async def iter_json_records(request: Request) -> AsyncIterator[Dict[str, Any]]:
-    """
-    Stream records from a large JSON payload using ijson if available.
-    Falls back to whole-body parse only if ijson is not installed.
-    """
+    """Iterate records from (possibly large) JSON; use ijson if installed."""
     try:
         import ijson  # type: ignore
     except Exception:
@@ -200,9 +183,8 @@ async def iter_json_records(request: Request) -> AsyncIterator[Dict[str, Any]]:
 
 # ---------- Database and Message Queue Functions ----------
 
-# Initialize database
 def init_database():
-    """Initialize SQLite database for storing webhook results"""
+    """Ensure SQLite table for webhook results exists."""
     db_path = Path("webhook_results.db")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -223,7 +205,7 @@ def init_database():
     conn.close()
 
 async def save_to_database(result: Dict[str, Any], group_by: Optional[str], sum_field: Optional[str]):
-    """Save webhook results to SQLite database"""
+    """Async wrapper to persist aggregation row."""
     try:
         # Run database operations in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
@@ -233,7 +215,7 @@ async def save_to_database(result: Dict[str, Any], group_by: Optional[str], sum_
         print(f"✗ Database save failed: {e}")
 
 def _save_to_database_sync(result: Dict[str, Any], group_by: Optional[str], sum_field: Optional[str]):
-    """Synchronous database save operation"""
+    """Blocking DB insert helper (run in executor)."""
     init_database()  # Ensure database exists
     
     db_path = Path("webhook_results.db")
@@ -255,7 +237,7 @@ def _save_to_database_sync(result: Dict[str, Any], group_by: Optional[str], sum_
     conn.close()
 
 async def publish_to_message_queue(result: Dict[str, Any], group_by: Optional[str], sum_field: Optional[str]):
-    """Publish webhook results to message queue (simulated with file-based queue)"""
+    """Persist message to file-based queue directory (simulation)."""
     try:
         # Simulate message queue with file-based approach
         message = {
@@ -278,7 +260,7 @@ async def publish_to_message_queue(result: Dict[str, Any], group_by: Optional[st
         print(f"✗ Message queue publish failed: {e}")
 
 def _publish_to_queue_sync(message: Dict[str, Any]):
-    """Synchronous message queue publish operation"""
+    """Blocking file write for queue message."""
     queue_dir = Path("message_queue")
     queue_dir.mkdir(exist_ok=True)
     
@@ -289,7 +271,7 @@ def _publish_to_queue_sync(message: Dict[str, Any]):
 # ---------- Utility functions for accessing stored data ----------
 
 def get_recent_results(limit: int = 10) -> list:
-    """Get recent webhook results from database"""
+    """Fetch latest stored aggregation rows (dict form)."""
     try:
         db_path = Path("webhook_results.db")
         if not db_path.exists():
@@ -323,7 +305,7 @@ def get_recent_results(limit: int = 10) -> list:
         return []
 
 def get_queued_messages(limit: int = 10) -> list:
-    """Get recent messages from the message queue"""
+    """Load most recent queue message JSON blobs."""
     try:
         queue_dir = Path("message_queue")
         if not queue_dir.exists():

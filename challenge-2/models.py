@@ -1,8 +1,4 @@
-"""
-Challenge 2 - Pydantic Models
-
-Data models for the advanced context managers and resource management system.
-"""
+"""Models for advanced resource manager + context orchestration."""
 
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -11,7 +7,7 @@ from enum import Enum
 
 
 class ResourceType(str, Enum):
-    """Supported resource types"""
+    """Supported resource types."""
     DATABASE = "database"
     API = "api" 
     CACHE = "cache"
@@ -21,7 +17,7 @@ class ResourceType(str, Enum):
 
 
 class ConnectionStatus(str, Enum):
-    """Connection status enumeration"""
+    """Lifecycle / health states."""
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
@@ -31,7 +27,7 @@ class ConnectionStatus(str, Enum):
 
 
 class ResourceTestParams(BaseModel):
-    """Parameters for resource testing"""
+    """Query params controlling resource test run."""
     resource_types: Optional[str] = Field(
         None,
         description="Comma-separated resource types to test",
@@ -57,7 +53,7 @@ class ResourceTestParams(BaseModel):
     @field_validator('resource_types')
     @classmethod
     def validate_resource_types(cls, v):
-        """Validate resource types are supported"""
+        """Ensure provided types exist in enum."""
         if v:
             types = [t.strip().lower() for t in v.split(",")]
             valid_types = [rt.value for rt in ResourceType]
@@ -67,14 +63,14 @@ class ResourceTestParams(BaseModel):
         return v
     
     def get_resource_types_list(self) -> List[str]:
-        """Get list of resource types to test"""
+        """Return parse list of resource types or defaults."""
         if self.resource_types:
             return [t.strip().lower() for t in self.resource_types.split(",")]
         return [ResourceType.DATABASE, ResourceType.API, ResourceType.CACHE]
 
 
 class ConnectionMetrics(BaseModel):
-    """Connection performance metrics"""
+    """Per-connection timing + retry metrics."""
     connection_time_ms: float = Field(
         ...,
         description="Time to establish connection in milliseconds",
@@ -103,7 +99,7 @@ class ConnectionMetrics(BaseModel):
 
 
 class ResourceTestResult(BaseModel):
-    """Result of testing a single resource"""
+    """Outcome details for one resource test."""
     resource_type: ResourceType = Field(..., description="Type of resource tested")
     status: ConnectionStatus = Field(..., description="Connection status")
     success: bool = Field(..., description="Whether the test was successful")
@@ -135,7 +131,7 @@ class ResourceTestResult(BaseModel):
 
 
 class ResourceTestResponse(BaseModel):
-    """Response from resource testing endpoint"""
+    """Aggregate resource test results + summary."""
     ok: bool = Field(True, description="Overall test success status")
     results: Dict[str, ResourceTestResult] = Field(
         ...,
@@ -157,7 +153,7 @@ class ResourceTestResponse(BaseModel):
     
     @model_validator(mode='after')
     def validate_results(self):
-        """Validate test results consistency"""
+        """Auto-fix ok flag if any resource failed."""
         results = self.results
         ok = self.ok
         
@@ -171,7 +167,7 @@ class ResourceTestResponse(BaseModel):
 
 
 class ConnectionLog(BaseModel):
-    """Connection log entry"""
+    """Single resource action log entry."""
     log_id: str = Field(..., description="Unique log entry ID")
     resource_type: ResourceType = Field(..., description="Resource type")
     operation: str = Field(..., description="Operation performed")
@@ -191,7 +187,7 @@ class ConnectionLog(BaseModel):
 
 
 class ConnectionLogsResponse(BaseModel):
-    """Response for connection logs endpoint"""
+    """Paginated connection log list."""
     ok: bool = Field(True, description="Request success status")
     logs: List[ConnectionLog] = Field(..., description="Connection log entries")
     count: int = Field(..., description="Total number of log entries", ge=0)
@@ -206,7 +202,7 @@ class ConnectionLogsResponse(BaseModel):
 
 
 class PerformanceMetrics(BaseModel):
-    """Performance analytics metrics"""
+    """Scalar metric sample."""
     metric_name: str = Field(..., description="Name of the metric")
     value: Union[float, int] = Field(..., description="Metric value")
     unit: str = Field(..., description="Metric unit")
@@ -218,7 +214,7 @@ class PerformanceMetrics(BaseModel):
 
 
 class PerformanceAnalytics(BaseModel):
-    """Performance analytics summary"""
+    """Grouped timing + success/failure aggregates."""
     total_connections: int = Field(..., description="Total connections made", ge=0)
     successful_connections: int = Field(..., description="Successful connections", ge=0)
     failed_connections: int = Field(..., description="Failed connections", ge=0)
@@ -254,7 +250,7 @@ class PerformanceAnalytics(BaseModel):
 
 
 class PerformanceResponse(BaseModel):
-    """Response for performance analytics endpoint"""
+    """Analytics payload with generation metadata."""
     ok: bool = Field(True, description="Request success status")
     analytics: PerformanceAnalytics = Field(..., description="Performance analytics data")
     generated_at: datetime = Field(..., description="Analytics generation timestamp")
@@ -265,7 +261,7 @@ class PerformanceResponse(BaseModel):
 
 
 class ResourceConfiguration(BaseModel):
-    """Resource configuration"""
+    """Config settings for a resource type."""
     resource_type: ResourceType = Field(..., description="Resource type")
     connection_string: Optional[str] = Field(
         None,
@@ -298,7 +294,7 @@ class ResourceConfiguration(BaseModel):
 
 
 class StatusResponse(BaseModel):
-    """System status response"""
+    """System-wide status snapshot."""
     ok: bool = Field(True, description="System status")
     status: str = Field(..., description="Status description")
     uptime_seconds: float = Field(..., description="System uptime in seconds", ge=0)
@@ -328,7 +324,7 @@ class StatusResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Error response model"""
+    """Standard error envelope."""
     ok: bool = Field(False, description="Request success status")
     error: str = Field(..., description="Error message")
     error_code: Optional[str] = Field(None, description="Error code")

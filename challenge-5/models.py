@@ -1,6 +1,4 @@
-"""
-Data models for the distributed task scheduling system.
-"""
+"""Models for distributed task scheduler (tasks, workers, metrics)."""
 
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator
@@ -10,7 +8,7 @@ import json
 
 
 class TaskPriority(str, Enum):
-    """Task priority levels"""
+    """Priority levels."""
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
@@ -18,7 +16,7 @@ class TaskPriority(str, Enum):
 
 
 class TaskStatus(str, Enum):
-    """Task execution status"""
+    """Execution lifecycle states."""
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -28,7 +26,7 @@ class TaskStatus(str, Enum):
 
 
 class TaskSubmissionRequest(BaseModel):
-    """Request model for task submission"""
+    """Submit task request payload."""
     task_name: str = Field(
         ..., 
         description="Name/type of the task to execute",
@@ -59,7 +57,7 @@ class TaskSubmissionRequest(BaseModel):
     @field_validator('payload')
     @classmethod
     def validate_payload(cls, v):
-        """Validate payload is JSON serializable"""
+        """Ensure payload JSON serializable."""
         try:
             json.dumps(v)
             return v
@@ -68,7 +66,7 @@ class TaskSubmissionRequest(BaseModel):
 
 
 class TaskSubmissionResponse(BaseModel):
-    """Response model for task submission"""
+    """Submission acknowledgment."""
     task_id: str = Field(..., description="Unique task identifier")
     status: TaskStatus = Field(..., description="Current task status")
     message: str = Field(..., description="Status message")
@@ -78,7 +76,7 @@ class TaskSubmissionResponse(BaseModel):
 
 
 class TaskResult(BaseModel):
-    """Task execution result"""
+    """Result wrapper for completed task."""
     success: bool = Field(..., description="Whether task completed successfully")
     result_data: Optional[Dict[str, Any]] = Field(None, description="Task result data")
     error_message: Optional[str] = Field(None, description="Error message if failed")
@@ -86,7 +84,7 @@ class TaskResult(BaseModel):
 
 
 class TaskStatusResponse(BaseModel):
-    """Response model for task status queries"""
+    """Status query response."""
     task_id: str = Field(..., description="Task identifier")
     status: TaskStatus = Field(..., description="Current task status")
     progress: int = Field(default=0, ge=0, le=100, description="Task progress percentage")
@@ -100,7 +98,7 @@ class TaskStatusResponse(BaseModel):
 
 
 class WorkerInfo(BaseModel):
-    """Information about a worker process"""
+    """Worker runtime stats."""
     worker_id: str = Field(..., description="Unique worker identifier")
     status: str = Field(..., description="Worker status (idle, busy, error)")
     current_task: Optional[str] = Field(None, description="Currently processing task ID")
@@ -113,7 +111,7 @@ class WorkerInfo(BaseModel):
 
 
 class WorkerStatusResponse(BaseModel):
-    """Response model for worker status"""
+    """Aggregate worker pool stats."""
     total_workers: int = Field(..., description="Total number of workers")
     active_workers: int = Field(..., description="Number of active workers")
     idle_workers: int = Field(..., description="Number of idle workers")
@@ -124,7 +122,7 @@ class WorkerStatusResponse(BaseModel):
 
 
 class SystemMetricsResponse(BaseModel):
-    """Response model for system metrics"""
+    """System + scheduler metrics snapshot."""
     uptime_seconds: float = Field(..., description="System uptime in seconds")
     cpu_usage_percent: float = Field(..., description="System CPU usage percentage")
     memory_usage_mb: float = Field(..., description="System memory usage in MB")
@@ -136,7 +134,7 @@ class SystemMetricsResponse(BaseModel):
 
 
 class SchedulerStats(BaseModel):
-    """Scheduler performance statistics"""
+    """Scheduler performance counters."""
     total_submitted: int = Field(default=0, description="Total tasks submitted")
     total_processed: int = Field(default=0, description="Total tasks processed")
     total_failed: int = Field(default=0, description="Total tasks failed")
@@ -148,7 +146,7 @@ class SchedulerStats(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Standard error response model"""
+    """Error envelope."""
     error: str = Field(..., description="Error message")
     detail: Optional[str] = Field(None, description="Detailed error information")
     timestamp: str = Field(..., description="Error timestamp")
@@ -156,7 +154,7 @@ class ErrorResponse(BaseModel):
 
 
 class StatusResponse(BaseModel):
-    """General status response model"""
+    """Generic status payload."""
     status: str = Field(..., description="Status message")
     timestamp: str = Field(..., description="Response timestamp")
     data: Optional[Dict[str, Any]] = Field(None, description="Additional data")

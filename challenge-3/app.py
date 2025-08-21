@@ -1,9 +1,4 @@
-"""
-Challenge 3 - Advanced Meta-Programming FastAPI Application
-
-RESTful API demonstrating metaclass-enforced plugin system with automatic
-registration and contract validation.
-"""
+"""FastAPI app exposing metaclass-enforced plugin registry (processors/validators/transformers)."""
 
 import asyncio
 import json
@@ -55,7 +50,7 @@ app = FastAPI(
 
 @app.get("/", response_model=StatusResponse)
 async def root():
-    """Root endpoint with system information"""
+    """Basic service banner."""
     return StatusResponse(
         ok=True,
         message="Meta-Programming Plugin System operational - Features: metaclass contracts, automatic registration, runtime validation",
@@ -65,7 +60,7 @@ async def root():
 
 @app.get("/health", response_model=SystemHealthResponse)
 async def health_check():
-    """System health check endpoint"""
+    """Return plugin + metrics health summary."""
     health_data = get_system_health()
     
     return SystemHealthResponse(
@@ -84,7 +79,7 @@ async def health_check():
 async def list_plugins(
     category: Optional[str] = Query(None, description="Filter by plugin category")
 ):
-    """List all registered plugins, optionally filtered by category"""
+    """List registered plugins (optionally filtered)."""
     try:
         plugins = get_registered_plugins(category)
         
@@ -125,7 +120,7 @@ async def list_plugins(
 
 @app.get("/contracts")
 async def get_contracts():
-    """Get all contract definitions"""
+    """Return contract definitions (required methods + attrs)."""
     def contract_to_dict(contract):
         return {
             "name": contract.name,
@@ -178,10 +173,7 @@ async def process_data(
     data: Dict[str, Any] = Body(...),
     validate_input: bool = Body(True)
 ):
-    """
-    Process data using a registered processor plugin.
-    Demonstrates metaclass contract enforcement and automatic validation.
-    """
+    """Process payload via named processor plugin (optional input validation)."""
     start_time = datetime.now()
     
     try:
@@ -226,10 +218,7 @@ async def process_data(
 async def validate_data(
     request: ValidationRequest = Depends()
 ) -> ValidationResponse:
-    """
-    Validate data using a registered validator plugin.
-    Demonstrates metaclass contract enforcement for validators.
-    """
+    """Validate payload using validator plugin (rules + strict mode)."""
     start_time = datetime.now()
     
     try:
@@ -274,10 +263,7 @@ async def validate_data(
 async def transform_data(
     request: TransformRequest = Depends()
 ) -> TransformResponse:
-    """
-    Transform data using a registered transformer plugin.
-    Demonstrates metaclass contract enforcement for transformers.
-    """
+    """Transform payload with transformer plugin (supports reverse)."""
     start_time = datetime.now()
     
     try:
@@ -320,7 +306,7 @@ async def transform_data(
 
 @app.get("/metrics", response_model=PerformanceResponse)
 async def get_metrics() -> PerformanceResponse:
-    """Get performance metrics for all plugin operations"""
+    """Return aggregated method performance metrics."""
     metrics_summary = get_performance_summary()
     
     # Convert to the expected format
@@ -354,7 +340,7 @@ async def get_metrics() -> PerformanceResponse:
 
 @app.delete("/metrics", response_model=StatusResponse)
 async def clear_metrics() -> StatusResponse:
-    """Clear all performance metrics"""
+    """Reset in-memory performance counters."""
     clear_all_metrics()
     return StatusResponse(
         ok=True,
@@ -363,143 +349,19 @@ async def clear_metrics() -> StatusResponse:
     )
 
 
-@app.post("/validate")
-async def validate_data(request: ValidationRequest):
-    """Validate data using a registered validator plugin"""
-    try:
-        # Create validator instance
-        validator = create_plugin_instance('validators', request.validator_type)
-        
-        # Perform validation
-        start_time = time.time()
-        is_valid = validator.validate(request.data)
-        validation_time = time.time() - start_time
-        
-        # Get errors if validation failed
-        errors = validator.get_errors() if not is_valid else []
-        
-        return {
-            "valid": is_valid,
-            "validator": request.validator_type,
-            "validation_time": validation_time,
-            "errors": errors,
-            "metadata": {
-                "validator_type": getattr(validator, 'validator_type', 'unknown'),
-                "rules_applied": request.rules
-            }
-        }
-        
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ContractViolationError as e:
-        raise HTTPException(status_code=500, detail=f"Contract violation: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
+# NOTE: Duplicate legacy /validate endpoint removed; single typed version retained.
 
 
-@app.post("/transform")
-async def transform_data(request: TransformRequest):
-    """Transform data using a registered transformer plugin"""
-    try:
-        # Create transformer instance
-        transformer = create_plugin_instance('transformers', request.transformer_type)
-        
-        # Perform transformation
-        start_time = time.time()
-        if request.reverse:
-            result = transformer.reverse_transform(request.data)
-            operation = "reverse_transform"
-        else:
-            result = transformer.transform(request.data)
-            operation = "transform"
-        transformation_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "transformer": request.transformer_type,
-            "operation": operation,
-            "transformation_time": transformation_time,
-            "result": result,
-            "metadata": {
-                "transformer_type": getattr(transformer, 'transformer_type', 'unknown'),
-                "reversible": getattr(transformer, 'reversible', False)
-            }
-        }
-        
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ContractViolationError as e:
-        raise HTTPException(status_code=500, detail=f"Contract violation: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transformation error: {str(e)}")
+# Removed duplicate legacy /transform endpoint (typed version retained above).
 
 
-@app.get("/metrics")
-async def get_metrics():
-    """Get performance metrics for all plugin operations"""
-    metrics = get_performance_summary()
-    
-    # Organize by plugin and method
-    organized_metrics = {}
-    for method_key, stats in metrics.items():
-        if '.' in method_key:
-            class_name, method_name = method_key.split('.', 1)
-            if class_name not in organized_metrics:
-                organized_metrics[class_name] = {}
-            organized_metrics[class_name][method_name] = stats
-    
-    return {
-        "total_methods_tracked": len(metrics),
-        "total_calls": sum(stats['call_count'] for stats in metrics.values()),
-        "total_time": sum(stats['total_time'] for stats in metrics.values()),
-        "metrics_by_plugin": organized_metrics,
-        "raw_metrics": metrics
-    }
+# NOTE: Duplicate raw /metrics endpoint removed (structured version retained).
 
 
-@app.delete("/metrics")
-async def clear_metrics():
-    """Clear all performance metrics"""
-    clear_all_metrics()
-    return {"message": "All performance metrics cleared"}
+# Duplicate untyped /metrics DELETE removed.
 
 
-@app.get("/contracts")
-async def get_contracts():
-    """Get all contract definitions"""
-    def contract_to_dict(contract):
-        return {
-            "name": contract.name,
-            "required_methods": [
-                {
-                    "name": method.name,
-                    "required_params": method.required_params,
-                    "param_types": {k: str(v) for k, v in method.param_types.items()},
-                    "return_type": str(method.return_type),
-                    "description": method.description
-                }
-                for method in contract.required_methods
-            ],
-            "optional_methods": [
-                {
-                    "name": method.name,
-                    "required_params": method.required_params,
-                    "param_types": {k: str(v) for k, v in method.param_types.items()},
-                    "return_type": str(method.return_type),
-                    "description": method.description
-                }
-                for method in contract.optional_methods
-            ],
-            "class_attributes": contract.class_attributes
-        }
-    
-    return {
-        "contracts": {
-            "DataProcessor": contract_to_dict(DATA_PROCESSOR_CONTRACT),
-            "Validator": contract_to_dict(VALIDATOR_CONTRACT),
-            "Transformer": contract_to_dict(TRANSFORMER_CONTRACT)
-        }
-    }
+# Duplicate contracts endpoint removed (canonical version earlier retained).
 
 
 @app.post("/validate-compliance")
@@ -545,20 +407,7 @@ async def validate_plugin_compliance(
     }
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    plugins = get_registered_plugins()
-    total_plugins = sum(len(category_plugins) for category_plugins in plugins.values())
-    
-    return {
-        "status": "healthy",
-        "system": "Meta-Programming Plugin System",
-        "total_plugins": total_plugins,
-        "plugin_categories": list(plugins.keys()),
-        "contracts_available": ["DataProcessor", "Validator", "Transformer"],
-        "timestamp": time.time()
-    }
+# Duplicate /health endpoint removed (structured one retained earlier).
 
 
 # Exception handlers

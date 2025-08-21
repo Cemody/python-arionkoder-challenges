@@ -3,10 +3,7 @@
 
 
 class LazyCollection:
-    """
-    A chainable, lazy collection. Transformations are stored and applied
-    only when you iterate. Optionally supports caching of realized results.
-    """
+    """Chainable lazy sequence pipeline (map/filter/skip/take/batch) with optional caching."""
     def __init__(self, source, ops=None, cache_enabled=False):
         self._source = source
         self._ops = ops or []          # sequence of ("op_name", callable/arg)
@@ -31,18 +28,18 @@ class LazyCollection:
         return self._with_op(("batch", int(size)))
 
     def chunk(self, size):
-        """Alias for batch() - groups elements into chunks of specified size"""
+        """Alias for batch: group into fixed-size tuples."""
         return self.batch(size)
 
     def page(self, page_number, page_size):
-        """Get a specific page of results (1-indexed)"""
+        """Return slice (1-indexed page)."""
         if page_number < 1:
             raise ValueError("Page number must be >= 1")
         offset = (page_number - 1) * page_size
         return self.skip(offset).take(page_size)
 
     def paginate(self, page_size):
-        """Return an iterator of pages, each containing up to page_size elements"""
+        """Yield successive pages (lists) of page_size until exhausted."""
         page_num = 1
         while True:
             page_data = self.page(page_num, page_size).to_list()
@@ -62,7 +59,7 @@ class LazyCollection:
 
     # --------- reducing operations (force evaluation) ----------
     def reduce(self, fn, initial=None):
-        """Apply a function of two arguments cumulatively to items, from left to right"""
+        """Fold items left-to-right using binary fn."""
         from functools import reduce as builtin_reduce
         items = list(self)
         if initial is not None:
@@ -71,21 +68,21 @@ class LazyCollection:
             return builtin_reduce(fn, items)
 
     def sum(self, start=0):
-        """Return the sum of all elements"""
+        """Sum numeric items (with start)."""
         total = start
         for item in self:
             total += item
         return total
 
     def count(self):
-        """Return the count of elements"""
+        """Count elements (forces evaluation)."""
         count = 0
         for _ in self:
             count += 1
         return count
 
     def min(self, default=None):
-        """Return the minimum element"""
+        """Return min element or default if empty provided."""
         try:
             return min(self)
         except ValueError:
@@ -94,7 +91,7 @@ class LazyCollection:
             raise
 
     def max(self, default=None):
-        """Return the maximum element"""
+        """Return max element or default if empty provided."""
         try:
             return max(self)
         except ValueError:
@@ -103,41 +100,41 @@ class LazyCollection:
             raise
 
     def first(self, default=None):
-        """Return the first element, or default if empty"""
+        """Return first element else default."""
         for item in self:
             return item
         return default
 
     def last(self, default=None):
-        """Return the last element, or default if empty"""
+        """Return last element else default."""
         last_item = default
         for item in self:
             last_item = item
         return last_item
 
     def any(self, pred=None):
-        """Return True if any element is truthy (or satisfies predicate)"""
+        """True if any element truthy or satisfies predicate."""
         if pred is None:
             return any(self)
         else:
             return any(pred(x) for x in self)
 
     def all(self, pred=None):
-        """Return True if all elements are truthy (or satisfy predicate)"""
+        """True if all elements truthy or satisfy predicate."""
         if pred is None:
             return all(self)
         else:
             return all(pred(x) for x in self)
 
     def find(self, pred):
-        """Return the first element that satisfies the predicate, or None"""
+        """Return first element passing predicate or None."""
         for item in self:
             if pred(item):
                 return item
         return None
 
     def group_by(self, key_fn):
-        """Group elements by the result of key_fn"""
+        """Return dict key_fn(value) -> list of values."""
         groups = {}
         for item in self:
             key = key_fn(item)

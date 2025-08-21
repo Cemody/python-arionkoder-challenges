@@ -28,34 +28,28 @@ async def webhook(
     request: Request,
     params: WebhookParams = Depends()
 ) -> WebhookResponse:
-    """
-    Streaming receiver that:
-      - prints each record once (as compact JSON)
-      - transforms via projection (include=...)
-      - aggregates on the fly (group_by[&sum_field])
-    Works in constant memory for NDJSON and (with ijson) large JSON.
-    """
+    """Stream, optionally project & aggregate records (NDJSON or JSON)."""
     start_time = datetime.datetime.now()
     included_fields = params.get_included_fields()
     projector = _project(included_fields)
     aggregation: Dict[Any, float] = {}
 
-    # Get content type from request headers directly
+    # Detect NDJSON vs generic JSON
     content_type = request.headers.get("content-type", "")
     is_ndjson = content_type and "application/x-ndjson" in content_type.lower()
 
     try:
         if is_ndjson:
             async for rec in iter_ndjson_records(request):
-                # print once
+                # Print raw record once
                 print(json.dumps(rec, ensure_ascii=False))
                 sys.stdout.flush()
 
-                # transform + aggregate in constant memory
+                # Project then aggregate incrementally
                 prec = projector(rec)
                 _aggregate_in_place(aggregation, prec, params.group_by, params.sum_field)
         else:
-            # Generic JSON (constant memory if ijson is installed)
+            # Fallback: generic JSON (streamed if ijson available)
             async for rec in iter_json_records(request):
                 print(json.dumps(rec, ensure_ascii=False))
                 sys.stdout.flush()
@@ -63,7 +57,7 @@ async def webhook(
                 prec = projector(rec)
                 _aggregate_in_place(aggregation, prec, params.group_by, params.sum_field)
 
-        # Calculate processing time
+    # Timing
         end_time = datetime.datetime.now()
         processing_time_ms = (end_time - start_time).total_seconds() * 1000
 
@@ -75,7 +69,7 @@ async def webhook(
             processing_time_ms=processing_time_ms
         )
 
-        # Save results to database and publish to message queue
+    # Persist + publish (fire & forget)
         await asyncio.gather(
             save_to_database(result.model_dump(), params.group_by, params.sum_field),
             publish_to_message_queue(result.model_dump(), params.group_by, params.sum_field),
@@ -85,7 +79,7 @@ async def webhook(
         return result
 
     except Exception as e:
-        # Non-JSON? Stream raw text lines to stdout without buffering.
+    # If body not JSON: stream raw text lines
         try:
             line_buf = ""
             async for chunk in request.stream():
@@ -118,16 +112,16 @@ async def webhook(
             )
 
 
-# ---------- Additional endpoints for viewing stored data ----------
+################################ Endpoints: inspection & status ################################
 
 @app.get("/results", response_model=ResultsResponse)
 async def get_results(
     limit: int = Query(10, description="Number of recent results to return", ge=1, le=100)
 ) -> ResultsResponse:
-    """Get recent webhook processing results from database"""
+    """Return recent stored webhook aggregation results."""
     try:
         results = get_recent_results(limit)
-        # Convert results to DatabaseResult models
+    # Normalize to models
         database_results = []
         for result in results:
             if isinstance(result, dict):
@@ -156,10 +150,10 @@ async def get_results(
 async def get_messages(
     limit: int = Query(10, description="Number of recent messages to return", ge=1, le=100)
 ) -> MessagesResponse:
-    """Get recent messages from the message queue"""
+    """Return recent queued message payloads."""
     try:
         messages = get_queued_messages(limit)
-        # Convert messages to MessageQueueResult models
+    # Normalize to models
         queue_messages = []
         for message in messages:
             if isinstance(message, dict):
@@ -186,12 +180,12 @@ async def get_messages(
 
 @app.get("/status", response_model=StatusResponse)
 async def get_status() -> StatusResponse:
-    """Get system status including recent activity"""
+    """Return lightweight service status + recent activity summary."""
     try:
         recent_results = get_recent_results(5)
         recent_messages = get_queued_messages(5)
         
-        # Create activity summary
+    # Build activity snapshot (placeholder metrics where noted)
         activity = ActivitySummary(
             total_requests=len(recent_results),
             successful_requests=len([r for r in recent_results if r.get('ok', True)]),
@@ -224,11 +218,11 @@ async def get_status() -> StatusResponse:
 
 @app.get("/health", response_model=HealthCheckResponse)
 async def health_check() -> HealthCheckResponse:
-    """Health check endpoint"""
+    """Basic dependency health probe (fast)."""
     start_time = datetime.datetime.now()
     
     try:
-        # Perform basic health checks
+    # Placeholder component checks (extend with real probes later)
         checks = {
             "database": True,  # Could test actual database connection
             "message_queue": True,  # Could test actual queue connection
