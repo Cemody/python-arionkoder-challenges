@@ -6,31 +6,34 @@ import time
 from typing import Any, Optional, Dict, List
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, Request, Query, HTTPException, Depends
+from fastapi.responses import JSONResponse
+
 from utils import (
     ResourceManager, DatabaseConnection, APIConnection, 
     CacheConnection, save_connection_log, get_connection_logs,
     get_performance_analytics
 )
 
-from fastapi import FastAPI, Request, Query, HTTPException
+from models import (
+    ResourceTestParams, ResourceTestResponse, ResourceTestResult,
+    ConnectionStatus, ResourceType, ConnectionMetrics,
+    ConnectionLogsResponse, PerformanceResponse, StatusResponse,
+    ErrorResponse
+)
 
 app = FastAPI()
 
-@app.post("/resources/test")
+@app.post("/resources/test", response_model=ResourceTestResponse)
 async def test_resources(
-    request: Request,
-    resource_types: Optional[str] = Query(None, description="Comma-separated resource types to test (database,api,cache)")
-) -> Dict[str, Any]:
+    params: ResourceTestParams = Depends()
+) -> ResourceTestResponse:
     """
     Test multiple resource connections using the custom context manager.
     Demonstrates robust resource management with automatic cleanup.
     """
-    requested_resources = []
-    if resource_types:
-        requested_resources = [r.strip() for r in resource_types.split(",")]
-    else:
-        # Default to all resource types
-        requested_resources = ["database", "api", "cache"]
+    start_time = datetime.datetime.now()
+    requested_resources = params.get_resource_types_list()
     
     results = {}
     connection_logs = []
@@ -38,49 +41,83 @@ async def test_resources(
     try:
         # Use the custom context manager to handle multiple resources
         async with ResourceManager(requested_resources) as resources:
-            for resource_name, connection in resources.items():
+            for resource_name, connection in resources.connections.items():
+                test_start = datetime.datetime.now()
+                
                 try:
                     # Test each resource connection
                     test_result = await connection.test_connection()
-                    results[resource_name] = {
-                        "status": "success",
-                        "result": test_result,
-                        "connection_time": datetime.datetime.now(datetime.timezone.utc).isoformat()
-                    }
+                    test_end = datetime.datetime.now()
+                    test_duration = (test_end - test_start).total_seconds() * 1000
+                    
+                    # Create connection metrics
+                    metrics = ConnectionMetrics(
+                        connection_time_ms=test_duration,
+                        response_time_ms=test_duration,
+                        retry_count=0
+                    )
+                    
+                    results[resource_name] = ResourceTestResult(
+                        resource_type=ResourceType(resource_name),
+                        status=ConnectionStatus.CONNECTED,
+                        success=True,
+                        result=test_result,
+                        connection_time=test_start,
+                        test_duration_ms=test_duration,
+                        metrics=metrics
+                    )
                     
                     connection_logs.append({
                         "resource": resource_name,
                         "action": "test",
                         "status": "success",
-                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                        "timestamp": test_start.isoformat()
                     })
                     
                 except Exception as e:
-                    results[resource_name] = {
-                        "status": "error",
-                        "error": str(e),
-                        "connection_time": datetime.datetime.now(datetime.timezone.utc).isoformat()
-                    }
+                    test_end = datetime.datetime.now()
+                    test_duration = (test_end - test_start).total_seconds() * 1000
+                    
+                    results[resource_name] = ResourceTestResult(
+                        resource_type=ResourceType(resource_name),
+                        status=ConnectionStatus.ERROR,
+                        success=False,
+                        error_message=str(e),
+                        connection_time=test_start,
+                        test_duration_ms=test_duration
+                    )
                     
                     connection_logs.append({
                         "resource": resource_name,
                         "action": "test",
                         "status": "error",
                         "error": str(e),
-                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                        "timestamp": test_start.isoformat()
                     })
         
         # Save connection logs
         await save_connection_log(connection_logs)
         
-        return {
-            "ok": True,
-            "tested_resources": list(results.keys()),
-            "results": results,
-            "total_resources": len(results),
-            "successful_connections": len([r for r in results.values() if r["status"] == "success"]),
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        # Calculate totals
+        end_time = datetime.datetime.now()
+        total_duration = (end_time - start_time).total_seconds() * 1000
+        successful_count = sum(1 for r in results.values() if r.success)
+        
+        # Create summary
+        summary = {
+            "total_tested": len(results),
+            "successful": successful_count,
+            "failed": len(results) - successful_count,
+            "success_rate": (successful_count / len(results) * 100) if results else 0
         }
+        
+        return ResourceTestResponse(
+            ok=True,
+            results=results,
+            summary=summary,
+            total_duration_ms=total_duration,
+            timestamp=end_time
+        )
         
     except Exception as e:
         # Log the error
@@ -93,7 +130,15 @@ async def test_resources(
         }
         await save_connection_log([error_log])
         
-        raise HTTPException(status_code=500, detail=f"Resource manager error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error=f"Resource testing failed: {str(e)}",
+                error_code="RESOURCE_TEST_ERROR",
+                error_type="RESOURCE_ERROR",
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            ).dict()
+        )
 
 @app.post("/resources/execute")
 async def execute_resource_operations(
@@ -128,7 +173,7 @@ async def execute_resource_operations(
                 operation_type = operation.get("operation")
                 operation_data = operation.get("data", {})
                 
-                if resource_name not in resources:
+                if resource_name not in resources.connections:
                     results[f"operation_{i}"] = {
                         "status": "error",
                         "error": f"Resource '{resource_name}' not available"
@@ -136,7 +181,7 @@ async def execute_resource_operations(
                     continue
                 
                 try:
-                    connection = resources[resource_name]
+                    connection = resources.connections[resource_name]
                     result = await connection.execute_operation(operation_type, operation_data)
                     
                     results[f"operation_{i}"] = {
@@ -196,58 +241,99 @@ async def execute_resource_operations(
 
 # ---------- Additional endpoints for monitoring and management ----------
 
-@app.get("/resources/status")
-async def get_resource_status():
+@app.get("/resources/status", response_model=StatusResponse)
+async def get_resource_status() -> StatusResponse:
     """Get status of all available resource types"""
+    start_time = datetime.datetime.now()
     available_resources = ["database", "api", "cache"]
-    status_results = {}
+    resource_health = {}
+    active_connections = {}
     
     for resource_type in available_resources:
         try:
             async with ResourceManager([resource_type]) as resources:
-                connection = resources[resource_type]
+                connection = resources.connections[resource_type]
                 test_result = await connection.test_connection()
-                status_results[resource_type] = {
-                    "status": "available",
-                    "last_test": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "details": test_result
-                }
+                resource_health[resource_type] = True
+                active_connections[resource_type] = 1  # Placeholder
         except Exception as e:
-            status_results[resource_type] = {
-                "status": "unavailable",
-                "error": str(e),
-                "last_test": datetime.datetime.now(datetime.timezone.utc).isoformat()
-            }
+            resource_health[resource_type] = False
+            active_connections[resource_type] = 0
     
-    return {
-        "ok": True,
-        "resources": status_results,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }
+    end_time = datetime.datetime.now()
+    uptime = (end_time - start_time).total_seconds()
+    
+    all_healthy = all(resource_health.values())
+    status_desc = "healthy" if all_healthy else "degraded"
+    
+    return StatusResponse(
+        ok=True,
+        status=status_desc,
+        uptime_seconds=uptime,
+        active_connections=active_connections,
+        resource_health=resource_health,
+        last_activity=end_time
+    )
 
-@app.get("/resources/logs")
-async def get_logs(limit: int = Query(20, description="Number of recent logs to return")):
+@app.get("/resources/logs", response_model=ConnectionLogsResponse) 
+async def get_logs(
+    limit: int = Query(20, description="Number of recent logs to return", ge=1, le=1000)
+) -> ConnectionLogsResponse:
     """Get recent connection logs"""
-    logs = await get_connection_logs(limit)
-    return {
-        "ok": True,
-        "logs": logs,
-        "count": len(logs),
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }
+    try:
+        logs = await get_connection_logs(limit)
+        # Convert logs to ConnectionLog models if needed
+        connection_logs = []
+        for log in logs:
+            if isinstance(log, dict):
+                connection_logs.append(log)
+        
+        return ConnectionLogsResponse(
+            ok=True,
+            logs=connection_logs,
+            count=len(connection_logs),
+            filters_applied={"limit": limit},
+            pagination={"total": len(connection_logs), "limit": limit}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error=f"Failed to retrieve logs: {str(e)}",
+                error_code="LOG_RETRIEVAL_ERROR",
+                error_type="DATABASE_ERROR",
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            ).dict()
+        )
 
-@app.get("/resources/analytics")
+@app.get("/resources/analytics", response_model=PerformanceResponse)
 async def get_analytics(
     resource_type: Optional[str] = Query(None, description="Filter by resource type"),
-    hours: int = Query(24, description="Time period in hours")
-):
+    hours: int = Query(24, description="Time period in hours", ge=1, le=168)
+) -> PerformanceResponse:
     """Get comprehensive performance analytics"""
-    analytics = await get_performance_analytics(resource_type, hours)
-    return {
-        "ok": True,
-        "analytics": analytics,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }
+    try:
+        analytics = await get_performance_analytics(resource_type, hours)
+        
+        return PerformanceResponse(
+            ok=True,
+            analytics=analytics,
+            generated_at=datetime.datetime.now(datetime.timezone.utc),
+            time_range={
+                "start": datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours),
+                "end": datetime.datetime.now(datetime.timezone.utc)
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error=f"Failed to retrieve analytics: {str(e)}",
+                error_code="ANALYTICS_ERROR",
+                error_type="PERFORMANCE_ERROR",
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            ).dict()
+        )
 
 @app.get("/resources/health")
 async def health_check():
@@ -261,7 +347,7 @@ async def health_check():
             try:
                 start_time = time.time()
                 async with ResourceManager([resource_type]) as resources:
-                    connection = resources[resource_type]
+                    connection = resources.connections[resource_type]
                     await connection.test_connection()
                 
                 response_time = time.time() - start_time

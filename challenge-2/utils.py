@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, AsyncContextManager, Protocol
 from contextlib import asynccontextmanager
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from collections.abc import MutableMapping
 
 # ---------- Performance Metrics and Logging Setup ----------
 
@@ -127,7 +128,8 @@ class DatabaseConnection:
     def _connect_sync(self):
         """Synchronous database connection with initialization"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            # Use check_same_thread=False to allow use from different threads
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
             # Initialize tables if they don't exist
             cursor = conn.cursor()
             
@@ -183,9 +185,14 @@ class DatabaseConnection:
                 
                 disconnect_time = time.time() - disconnect_start
                 self.connected = False
+                self.connection = None  # Release the connection reference
                 
                 self.logger.info(f"Database disconnected successfully in {disconnect_time:.3f}s")
                 print(f"✓ Database disconnected: {self.db_path} ({disconnect_time:.3f}s)")
+                
+                # Clear references to help with garbage collection
+                self.metrics = None
+                self.logger = None
                 
             except Exception as e:
                 self.logger.error(f"Error during database disconnection: {e}", exc_info=True)
@@ -542,6 +549,10 @@ class CacheConnection:
                 self.logger.info(f"Cache cleared successfully in {disconnect_time:.3f}s (cleared {cache_size} items)")
                 print(f"✓ Cache cleared ({cache_size} items, {disconnect_time:.3f}s)")
                 
+                # Clear references to help with garbage collection
+                self.metrics = None
+                self.logger = None
+                
             except Exception as e:
                 self.logger.error(f"Error during cache cleanup: {e}", exc_info=True)
                 raise
@@ -720,7 +731,7 @@ class CacheConnection:
 
 # ---------- Custom Context Manager ----------
 
-class ResourceManager:
+class ResourceManager(dict):
     """
     Robust context manager for managing multiple external resource connections.
     Automatically handles connection setup, cleanup, error recovery, and performance tracking.
@@ -744,7 +755,7 @@ class ResourceManager:
         self._is_entered = False
         self._context_id = None
     
-    async def __aenter__(self) -> Dict[str, Any]:
+    async def __aenter__(self) -> "ResourceManager":
         """Enter the context - establish all connections with detailed tracking"""
         import uuid
         self._context_id = str(uuid.uuid4())[:8]
@@ -787,7 +798,7 @@ class ResourceManager:
         if self.connection_errors:
             self.logger.warning(f"Some connections failed: {list(self.connection_errors.keys())}")
         
-        return self.connections
+        return self
     
     async def _establish_connection(self, resource_type: str):
         """Establish a single connection with timing"""
@@ -854,6 +865,10 @@ class ResourceManager:
         self.logger.info(f"  - Failed connections: {len(self.connection_errors)}")
         
         print(f"✅ All connections cleaned up in {cleanup_time:.3f}s (total session: {total_time:.3f}s)")
+        
+        # Clear connections to allow garbage collection
+        self.connections.clear()
+        self._is_entered = False
         
         # Handle exceptions that occurred in the with block
         if exc_type is not None:
@@ -970,16 +985,57 @@ class ResourceManager:
                 results[resource_type] = {
                     "status": "success",
                     "result": test_result,
-                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
                 }
             except Exception as e:
                 results[resource_type] = {
                     "status": "error",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
                 }
                 
         return results
+    
+    # ---------- Dictionary-like Interface ----------
+    
+    def __getitem__(self, key: str) -> Any:
+        """Allow dictionary-style access to resources"""
+        return self.connections[key]
+    
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Allow dictionary-style assignment (internal use only)"""
+        self.connections[key] = value
+    
+    def __delitem__(self, key: str) -> None:
+        """Allow dictionary-style deletion"""
+        if key in self.connections:
+            del self.connections[key]
+        else:
+            raise KeyError(f"Resource '{key}' not found")
+    
+    def __contains__(self, key: str) -> bool:
+        """Allow 'in' operator to check if resource exists"""
+        return key in self.connections
+    
+    def __len__(self) -> int:
+        """Return the number of acquired resources"""
+        return len(self.connections)
+    
+    def __iter__(self):
+        """Allow iteration over resource names"""
+        return iter(self.connections)
+    
+    def keys(self):
+        """Return resource names (dictionary-like interface)"""
+        return self.connections.keys()
+    
+    def values(self):
+        """Return resource connections (dictionary-like interface)"""
+        return self.connections.values()
+    
+    def items(self):
+        """Return resource name-connection pairs (dictionary-like interface)"""
+        return self.connections.items()
 
 # ---------- Enhanced Logging Functions ----------
 
@@ -990,7 +1046,7 @@ async def save_connection_log(logs: List[Dict[str, Any]]):
     
     try:
         async with ResourceManager(["database"]) as resources:
-            db_connection = resources["database"]
+            db_connection = resources.connections["database"]
             
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _save_logs_sync, db_connection.connection, logs)
@@ -1079,7 +1135,7 @@ async def get_performance_analytics(resource_type: Optional[str] = None, hours: 
     
     try:
         async with ResourceManager(["database"]) as resources:
-            db_connection = resources["database"]
+            db_connection = resources.connections["database"]
             
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, _get_analytics_sync, db_connection.connection, resource_type, hours)
